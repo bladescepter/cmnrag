@@ -1,0 +1,30 @@
+# 凭据与本地配置 —— 永不提交
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+
+# 依赖与构建产物
+node_modules/
+.wrangler/
+dist/
+coverage/
+
+# omp 智能体技能库（非项目源码）
+.omp/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 测试/临时产物（列检测截图等，数据真源是 Markdown 稿件）
+cmnrag/column_test/
+
+# 编辑器/系统杂项
+.DS_Store
+Thumbs.db
+*.tmp
+
+# 本地报告与导出
+reports/
