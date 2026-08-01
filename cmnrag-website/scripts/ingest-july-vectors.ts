@@ -1,12 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { chunkArticle } from "../src/ingest/chunkArticle";
 import { buildEmbeddingText, discoverJulyFiles } from "../src/ingest/julyArchive";
 import { vectorIdForChunk } from "../src/ingest/vectorId";
 import { parseArticle } from "../src/archive/parseArticle";
 
-const sourceRoot = process.argv[2] ?? "/opt/data/cmnrag";
+// 默认指向仓库内数据根目录（<项目根>/cmnrag），可用第一个参数覆盖；
+// 以脚本位置为锚，不依赖运行时 cwd。
+const sourceRoot = process.argv[2] ?? join(__dirname, "..", "..", "cmnrag");
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "6af7ecfe8e736f150bae5089463f9293";
 const token = process.env.CLOUDFLARE_RAG_API_TOKEN;
 const databaseId = "f0fbe6ce-5e87-4885-9ab6-7e948ec13c4d";
@@ -90,7 +92,7 @@ ON CONFLICT(source_path) DO UPDATE SET article_id=excluded.article_id, source_sh
 
 async function main() {
 	const files = await discoverJulyFiles(sourceRoot);
-	const articles = await Promise.all(files.map(async (file) => parseArticle(await readFile(file, "utf8"), relative(sourceRoot, file))));
+	const articles = await Promise.all(files.map(async (file) => parseArticle(await readFile(file, "utf8"), relative(sourceRoot, file).split(sep).join("/"))));
 	const runId = randomUUID();
 	await execute("INSERT INTO ingest_runs(run_id, started_at, source_root, article_total) VALUES (?, datetime('now'), ?, ?)", [runId, `${sourceRoot}/202607`, articles.length]);
 	const chunks = articles.flatMap((article) => chunkArticle(article.content).map((content, chunkIndex, all) => ({

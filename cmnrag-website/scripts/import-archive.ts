@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { parseArticle } from "../src/archive/parseArticle";
 
-const sourceRoot = process.argv[2] ?? "/opt/data/cmnrag";
+// 默认指向仓库内数据根目录（<项目根>/cmnrag），可用第一个参数覆盖；
+// 以脚本位置为锚，不依赖运行时 cwd。
+const sourceRoot = process.argv[2] ?? join(__dirname, "..", "..", "cmnrag");
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "6af7ecfe8e736f150bae5089463f9293";
 const token = process.env.CLOUDFLARE_RAG_API_TOKEN;
 const databaseId = "f0fbe6ce-5e87-4885-9ab6-7e948ec13c4d";
@@ -11,7 +13,7 @@ if (!token) throw new Error("CLOUDFLARE_RAG_API_TOKEN is required");
 
 async function walk(directory: string): Promise<string[]> {
 	const entries = await readdir(directory, { withFileTypes: true });
-	const nested = await Promise.all(entries.map((entry) => entry.isDirectory() ? walk(join(directory, entry.name)) : entry.name.endsWith(".md") && /^2026\d{4}$/.test(directory.split("/").at(-2) ?? "") ? [join(directory, entry.name)] : []));
+	const nested = await Promise.all(entries.map((entry) => entry.isDirectory() ? walk(join(directory, entry.name)) : entry.name.endsWith(".md") && /^2026\d{4}$/.test(directory.split(/[\\/]/).at(-2) ?? "") ? [join(directory, entry.name)] : []));
 	return nested.flat();
 }
 
@@ -32,7 +34,9 @@ async function main() {
 	// therefore never produces a partly ingested corpus.
 	const articles = await Promise.all(files.map(async (file) => {
 		const raw = await readFile(file, "utf8");
-		return parseArticle(raw, relative(sourceRoot, file));
+		// 统一正斜杠 source_path：article_id 由 source_path 派生，且 D1 按 source_path 去重；
+		// 平台分隔符不一致会改变 ID 并造成重复入库。
+		return parseArticle(raw, relative(sourceRoot, file).split(sep).join("/"));
 	}));
 	const searchableArticles = articles.filter((article) => article.content.length > 0);
 	const metadataOnlyCount = articles.length - searchableArticles.length;
