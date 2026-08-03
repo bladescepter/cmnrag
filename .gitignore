@@ -11,7 +11,7 @@ node_modules/
 dist/
 coverage/
 
-# omp 智能体技能库（非项目源码）
+# omp 智能体配置（技能库 + 项目级 AGENT/RULE 文件，统一放 .omp/ 下，不入库）
 .omp/
 
 # Python 缓存

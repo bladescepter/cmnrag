@@ -28,7 +28,7 @@ def llm_region(title, body):
     key = get_key()
     if not key:
         return ""
-    prompt = f"文章标题：{title}\n正文开头：{body[:1500]}\n\n判断这篇文章聚焦哪个地区的工作：\n1) 聚焦某地→输出完整行政路径（省+市+县，如\"河南省郑州市\"）\n2) 举例提到的地名不算，要看全文主体聚焦哪个地区\n3) 跨多省或是全国性→输出全国\n只输出地名或全国，不要解释。\n回答："
+    prompt = f"文章标题：{title}\n正文开头：{body[:1500]}\n\n判断这篇文章聚焦哪个地区的工作：\n1) 聚焦某地→输出完整行政路径（省+市+县，如\"河南省郑州市\"），省级行政区必须输出，不要省略（如输出\"广西壮族自治区百色市乐业县\"而不是\"百色市乐业县\"）\n2) 举例提到的地名不算，要看全文主体聚焦哪个地区\n3) 跨多省或是全国性→输出全国\n4) 国际报道或中国以外地区→输出全国\n只输出地名或全国，不要解释。\n回答："
     cmd = [
         "curl", "-s", "--connect-timeout", "10", "--max-time", "30",
         "-H", f"Authorization: Bearer {key}",
@@ -40,10 +40,19 @@ def llm_region(title, body):
         }),
         API_BASE,
     ]
+    r = None
+    for attempt, delay in enumerate([0, 2, 5]):
+        if attempt:
+            time.sleep(delay)
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=35)
+        except Exception:
+            continue
+        if r.returncode == 0:
+            break
+    if r is None or r.returncode != 0:
+        return ""
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=35)
-        if r.returncode != 0:
-            return ""
         data = json.loads(r.stdout)
         msg = data.get("choices", [{}])[0].get("message", {})
         content = msg.get("content", "").strip()
@@ -60,13 +69,27 @@ def llm_region(title, body):
                 if m2:
                     result = m2.group(1)
                     break
-        # 补全省/市前缀
-        if result and not re.search(r'^(?:北京|上海|天津|重庆|[\u4e00-\u9fff]{2,}(?:省|自治区))', result):
+        # 补全省/市前缀（省会级兑底：只输出市名时补省级，如 郑州市 → 河南省郑州市）
+        province_re = re.compile(r'^(?:北京|上海|天津|重庆|[\u4e00-\u9fff]{2,}(?:省|自治区|特别行政区))')
+        if result and not province_re.match(result):
             for k, v in _PROV.items():
                 if result == k or result == k.replace("市",""):
                     result = v
                     break
-        return "" if result in ("全国","") else result
+        # 完整性校验：结果必须含省级行政区；缺省（如"百色市乐业县"）则二次调用补全，仍不完整留空待审
+        if result and not province_re.match(result):
+            retry_cmd = list(cmd)
+            retry_prompt = prompt + f"\n上次输出“{result}”缺少省级行政区，请补全省级后重新输出完整路径。\n回答："
+            retry_cmd[-2] = json.dumps({"model": "deepseek-chat", "messages": [{"role": "user", "content": retry_prompt}], "max_tokens": 500})
+            try:
+                rr = subprocess.run(retry_cmd, capture_output=True, text=True, timeout=35)
+                if rr.returncode == 0:
+                    rdata = json.loads(rr.stdout)
+                    rcontent = rdata.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                    result = rcontent if (rcontent and province_re.match(rcontent)) else ""
+            except Exception:
+                result = ""
+        return result
     except Exception:
         return ""
 

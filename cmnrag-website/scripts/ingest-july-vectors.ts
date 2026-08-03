@@ -51,6 +51,15 @@ async function execute(sql: string, params: unknown[]) {
 	});
 }
 
+async function query(sql: string, params: unknown[]): Promise<Array<Record<string, unknown>>> {
+	const data = await cloudflare(`/d1/database/${databaseId}/query`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ sql, params }),
+	});
+	return (data.result as Array<{ results: Array<Record<string, unknown>> }> | undefined)?.[0]?.results ?? [];
+}
+
 async function embed(texts: string[]): Promise<number[][]> {
 	const data = await cloudflare(`/ai/run/${EMBEDDING_MODEL}`, {
 		method: "POST",
@@ -95,7 +104,15 @@ async function main() {
 	const articles = await Promise.all(files.map(async (file) => parseArticle(await readFile(file, "utf8"), relative(sourceRoot, file).split(sep).join("/"))));
 	const runId = randomUUID();
 	await execute("INSERT INTO ingest_runs(run_id, started_at, source_root, article_total) VALUES (?, datetime('now'), ?, ?)", [runId, `${sourceRoot}/202607`, articles.length]);
-	const chunks = articles.flatMap((article) => chunkArticle(article.content).map((content, chunkIndex, all) => ({
+	// 增量：以 chunks 表嵌入时的 source_sha256 为判据（不能用 articles 表——import 脚本会
+	// 先把它更新为新值，导致内容变了向量却永不重刷）。本地 sha 与已嵌入 sha 不一致或
+	// 无嵌入记录的文章整体重刷其分块。
+	const existing = new Map(
+		(await query("SELECT article_id, source_sha256 FROM chunks", [])).map((row) => [String(row.article_id), String(row.source_sha256)]),
+	);
+	const toRefresh = articles.filter((article) => article.content.length > 0 && existing.get(article.articleId) !== article.sourceSha256);
+	const skipped = articles.length - toRefresh.length;
+	const chunks = toRefresh.flatMap((article) => chunkArticle(article.content).map((content, chunkIndex, all) => ({
 		vectorId: vectorIdForChunk(article.articleId, chunkIndex),
 		chunkId: `${article.articleId}:${chunkIndex}`,
 		articleId: article.articleId,
@@ -106,7 +123,7 @@ async function main() {
 		embeddingText: buildEmbeddingText(article, content),
 		article,
 	}))).filter((chunk) => chunk.content.length > 0);
-	for (const article of articles) await upsertArticle(article);
+	for (const article of toRefresh) await upsertArticle(article);
 	for (let offset = 0; offset < chunks.length; offset += BATCH_SIZE) {
 		const batch = chunks.slice(offset, offset + BATCH_SIZE);
 		const vectors = await embed(batch.map((chunk) => chunk.embeddingText));
@@ -118,8 +135,8 @@ ON CONFLICT(chunk_id) DO UPDATE SET vector_id=excluded.vector_id, article_id=exc
 		}
 		console.log(`embedded ${Math.min(offset + batch.length, chunks.length)}/${chunks.length}`);
 	}
-	await execute("UPDATE ingest_runs SET completed_at=datetime('now'), inserted_count=?, failed_count=0 WHERE run_id=?", [articles.length, runId]);
-	console.log(JSON.stringify({ runId, articles: articles.length, chunks: chunks.length, sourceRoot: `${sourceRoot}/202607` }));
+	await execute("UPDATE ingest_runs SET completed_at=datetime('now'), inserted_count=?, failed_count=0 WHERE run_id=?", [toRefresh.length, runId]);
+	console.log(JSON.stringify({ runId, articles: toRefresh.length, skipped, chunks: chunks.length, sourceRoot: `${sourceRoot}/202607` }));
 }
 
 main().catch(async (error) => {
