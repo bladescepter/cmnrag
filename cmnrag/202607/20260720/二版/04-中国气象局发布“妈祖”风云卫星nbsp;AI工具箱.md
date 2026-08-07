@@ -7,7 +7,9 @@ page: 二版
 theme: 综合
 edition_type: 常规版
 headline: false
-author: 黄琬婷 林禹彤
+author:
+  - 黄琬婷
+  - 林禹彤
 region: 
 column: 
 ---

@@ -6,14 +6,24 @@ import { parseArticle } from "../src/archive/parseArticle";
 // 默认指向仓库内数据根目录（<项目根>/cmnrag），可用第一个参数覆盖；
 // 以脚本位置为锚，不依赖运行时 cwd。
 const sourceRoot = process.argv[2] ?? join(__dirname, "..", "..", "cmnrag");
+// 月份过滤：CMNRAG_MONTHS=202607,202608 时只导这些月份；留空则全量
+const monthSet = new Set((process.env.CMNRAG_MONTHS ?? "").split(",").map((s) => s.trim()).filter(Boolean));
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "6af7ecfe8e736f150bae5089463f9293";
 const token = process.env.CLOUDFLARE_RAG_API_TOKEN;
 const databaseId = "f0fbe6ce-5e87-4885-9ab6-7e948ec13c4d";
 if (!token) throw new Error("CLOUDFLARE_RAG_API_TOKEN is required");
 
-async function walk(directory: string): Promise<string[]> {
+async function walk(directory: string, depth = 0): Promise<string[]> {
 	const entries = await readdir(directory, { withFileTypes: true });
-	const nested = await Promise.all(entries.map((entry) => entry.isDirectory() ? walk(join(directory, entry.name)) : entry.name.endsWith(".md") && /^2026\d{4}$/.test(directory.split(/[\\/]/).at(-2) ?? "") ? [join(directory, entry.name)] : []));
+	const nested = await Promise.all(entries.map((entry) => {
+		const path = join(directory, entry.name);
+		if (entry.isDirectory()) {
+			// depth 0 的子目录是 YYYYMM；限定月份时跳过集合外的月份目录
+			if (depth === 0 && monthSet.size > 0 && !monthSet.has(entry.name)) return [];
+			return walk(path, depth + 1);
+		}
+		return entry.name.endsWith(".md") && /^2026\d{4}$/.test(directory.split(/[\\/]/).at(-2) ?? "") ? [path] : [];
+	}));
 	return nested.flat();
 }
 
@@ -71,7 +81,7 @@ async function main() {
 		await execute(`INSERT INTO articles(article_id, source_path, source_sha256, type, source, title, subtitle, author, published_date, page, theme, edition_type, headline, image, column_name, region, content)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(source_path) DO UPDATE SET source_sha256=excluded.source_sha256, type=excluded.type, source=excluded.source, title=excluded.title, subtitle=excluded.subtitle, author=excluded.author, published_date=excluded.published_date, page=excluded.page, theme=excluded.theme, edition_type=excluded.edition_type, headline=excluded.headline, image=excluded.image, column_name=excluded.column_name, region=excluded.region, content=excluded.content, imported_at=CURRENT_TIMESTAMP
-		WHERE articles.source_sha256 <> excluded.source_sha256`, [article.articleId, article.sourcePath, article.sourceSha256, article.type, article.source, article.title, article.subtitle, article.author, article.date, article.page, article.theme, article.editionType, article.headline ? 1 : 0, article.image ? 1 : 0, article.columnName, article.region, article.content]);
+		WHERE articles.source_sha256 <> excluded.source_sha256`, [article.articleId, article.sourcePath, article.sourceSha256, article.type, article.source, article.title, article.subtitle, JSON.stringify(article.author), article.date, article.page, article.theme, article.editionType, article.headline ? 1 : 0, article.image ? 1 : 0, JSON.stringify(article.columnName), JSON.stringify(article.region), article.content]);
 		inserted++;
 		if (remoteSha !== undefined) changed++;
 	}

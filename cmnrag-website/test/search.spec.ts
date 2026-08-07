@@ -22,6 +22,7 @@ describe("buildArticleQuery", () => {
 
 	it("matches a city name occurring inside the structured region", () => {
 		const query = buildArticleQuery({ regionPrefix: "唐山" });
+		expect(query.sql).toContain("instr(region, ?) > 0");
 		expect(query.params).toEqual(["唐山"]);
 	});
 

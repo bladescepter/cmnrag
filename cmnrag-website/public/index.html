@@ -18,7 +18,7 @@
   </style>
 </head>
 <body>
-<header><h1>中国气象报资料检索</h1><p>按刊期、版面、栏目、地区、作者和主题精确筛选；内容均来自已清洗稿件档案。</p></header>
+<header><h1>中国气象报资料检索</h1><p>支持按关键词搜索，按日期、版面、主题、栏目、地区、作者精确筛选，基于筛选内容与AI对话。数据均来自公开报道，不涉及保密内容。</p></header>
 <main>
   <section class="panel">
     <form id="search-form">
@@ -50,7 +50,7 @@
 <script>
 const form=document.querySelector('#search-form'), results=document.querySelector('#results'), summary=document.querySelector('#summary'), notice=document.querySelector('#notice'), dialog=document.querySelector('#article-dialog'), moreResults=document.querySelector('#more-results'), loadMore=document.querySelector('#load-more'), columnInput=document.querySelector('#column'), columnOptions=document.querySelector('#column-options'), themeInput=document.querySelector('#theme'), themeOptions=document.querySelector('#theme-options'), aiQuestion=document.querySelector('#ai-question'), askAi=document.querySelector('#ask-ai'), aiNotice=document.querySelector('#ai-notice'), chatLog=document.querySelector('#chat-log'), drawer=document.querySelector('#ai-drawer'), chatScope=document.querySelector('#chat-scope'), openAi=document.querySelector('#open-ai'), closeAi=document.querySelector('#close-ai'), newChat=document.querySelector('#new-chat');
 let searchOffset=0;let searchTotal=0;
-const text=(v,label)=>v||`无${label}`;
+const text=(v,label)=>Array.isArray(v)?(v.join('、')||`无${label}`):(v||`无${label}`);
 function params(){const data=new FormData(form), p=new URLSearchParams();for(const [k,v] of data){if(v.trim())p.append(k,v.trim())}return p}
 function esc(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function renderItems(items){return items.map(x=>`<div class="result" data-id="${esc(x.article_id)}"><div><div class="title">${esc(x.title)}</div><div class="meta"><span>${esc(x.published_date)}</span><span class="pill page-pill">${esc(x.page)}</span><span class="pill author-pill">${esc(text(x.author,'作者'))}</span><span class="pill column-pill">${esc(text(x.column_name,'栏目'))}</span><span class="pill region-pill">${esc(text(x.region,'地区'))}</span></div></div><div class="hint">阅读全文 ›</div></div>`).join('')}

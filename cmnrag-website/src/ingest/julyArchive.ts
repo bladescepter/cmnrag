@@ -3,16 +3,15 @@ import { join } from "node:path";
 
 export type EmbeddingMetadata = {
 	title: string;
-	author: string;
+	author: string[];
 	date: string;
 	page: string;
 	theme: string;
-	columnName: string;
-	region: string;
+	columnName: string[];
+	region: string[];
 };
 
-export async function discoverJulyFiles(root: string): Promise<string[]> {
-	const julyRoot = join(root, "202607");
+export async function discoverMonthFiles(root: string, months: string[]): Promise<string[]> {
 	async function walk(directory: string): Promise<string[]> {
 		const entries = await readdir(directory, { withFileTypes: true });
 		const nested = await Promise.all(entries.map((entry) => {
@@ -22,10 +21,22 @@ export async function discoverJulyFiles(root: string): Promise<string[]> {
 		}));
 		return nested.flat();
 	}
-	return (await walk(julyRoot)).sort();
+	const results: string[] = [];
+	for (const month of months) {
+		try {
+			results.push(...(await walk(join(root, month))));
+		} catch {
+			// 月份目录不存在则跳过
+		}
+	}
+	return results.sort();
 }
 
-const value = (text: string) => text || "无";
+export async function discoverJulyFiles(root: string): Promise<string[]> {
+	return discoverMonthFiles(root, ["202607"]);
+}
+
+const value = (text: string[] | undefined) => (text && text.length ? text.join("、") : "无");
 
 export function buildEmbeddingText(metadata: EmbeddingMetadata, chunk: string): string {
 	return [

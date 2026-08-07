@@ -122,7 +122,9 @@ def main(date_str):
                 continue
             region = llm_region(title, body_text[:1500])
             if region:
-                c = re.sub(r'^region:\s*$', f"region: {region}", c, flags=re.MULTILINE)
+                items = [v.strip() for v in re.split(r"[,，;；]", region) if v.strip()]
+                fm_region = "region:\n" + "\n".join(f"  - {v}" for v in items)
+                c = re.sub(r'^region:\s*$', fm_region, c, flags=re.MULTILINE)
                 with open(fpath, "w", encoding="utf-8") as fh:
                     fh.write(c)
             prefix = f.split("-",1)[0]

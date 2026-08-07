@@ -2,13 +2,17 @@
 type: 报道
 source: 中国气象报
 title: 升级版AI-TRANS实现台风预报三重突破
-author: 张艺博 赵大军 王慧
+author:
+  - 张艺博
+  - 赵大军
+  - 王慧
 date: 2026-07-27
 page: 三版
 theme: 科技
 edition_type: 常规版
 headline: true
-column: 气象科技能力现代化 社会服务现代化•解码气象科技 中国气象科学研究院协办
+column:
+  - 气象科技能力现代化 社会服务现代化•解码气象科技
 region: 
 ---
 

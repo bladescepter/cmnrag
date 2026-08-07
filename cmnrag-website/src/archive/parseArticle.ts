@@ -8,15 +8,15 @@ export type Article = {
 	source: string;
 	title: string;
 	subtitle: string;
-	author: string;
+	author: string[];
 	date: string;
 	page: string;
 	theme: string;
 	editionType: string;
 	headline: boolean;
 	image: boolean;
-	columnName: string;
-	region: string;
+	columnName: string[];
+	region: string[];
 	content: string;
 	sourceSha256: string;
 };
@@ -37,6 +37,24 @@ function textValue(frontmatter: RawFrontmatter, key: string, required = false): 
 	const text = String(value).trim();
 	if (required && !text) throw new Error(`Missing required frontmatter field: ${key}`);
 	return text;
+}
+
+function listTextValue(frontmatter: RawFrontmatter, key: string): string[] {
+	const value = frontmatter[key];
+	if (value === undefined || value === null || value === "") return [];
+	if (typeof value === "string") return [value.trim()].filter(Boolean);
+	if (typeof value === "number") return [String(value)];
+	if (Array.isArray(value)) {
+		return value
+			.map((item) => {
+				if (typeof item !== "string" && typeof item !== "number") {
+					throw new Error(`Frontmatter field ${key} must be text or list of text`);
+				}
+				return String(item).trim();
+			})
+			.filter(Boolean);
+	}
+	throw new Error(`Frontmatter field ${key} must be text or list of text`);
 }
 
 function booleanValue(frontmatter: RawFrontmatter, key: string, fallback = false): boolean {
@@ -70,15 +88,15 @@ export function parseArticle(markdown: string, sourcePath: string): Article {
 		source: textValue(frontmatter, "source", true),
 		title: textValue(frontmatter, "title", true),
 		subtitle: textValue(frontmatter, "subtitle"),
-		author: textValue(frontmatter, "author"),
+		author: listTextValue(frontmatter, "author"),
 		date,
 		page,
 		theme: textValue(frontmatter, "theme", true),
 		editionType,
 		headline: booleanValue(frontmatter, "headline"),
 		image: booleanValue(frontmatter, "image"),
-		columnName: textValue(frontmatter, "column"),
-		region: textValue(frontmatter, "region"),
+		columnName: listTextValue(frontmatter, "column"),
+		region: listTextValue(frontmatter, "region"),
 		content,
 		sourceSha256: createHash("sha256").update(markdown).digest("hex"),
 	};

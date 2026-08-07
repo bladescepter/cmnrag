@@ -2,7 +2,8 @@
 type: 报道
 source: 中国气象报
 title: ROSE3.1版在北方地区启动试点运行
-author: 李悦
+author:
+  - 李悦
 date: 2026-07-01
 page: 一版
 theme: 要闻

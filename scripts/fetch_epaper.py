@@ -58,7 +58,7 @@ SURNAMES = set(
     '燕冀郏浦尚农温别庄晏柴瞿阎充慕连茹习宦艾鱼容向古'
     '易慎戈廖庾终暨居衡步都耿满弘匡国文寇广禄阙东欧殳'
     '沃利蔚越夔隆师巩厍聂晁勾敖融冷訾辛阚那简饶空曾沙'
-    '乜养鞠须丰巢关蒯相查后荆红游竺权逯盖益桓公'
+    '乜养鞠须丰巢关蒯相查后荆红游竺权逯盖益桓公光'
 )
 
 
@@ -108,6 +108,9 @@ KNOWN_AUTHORS = {
     "李喆", "李婷", "李建坤", "李荣", "杨彦", "杨红龙", "柳东慧", "梁宇清", "王嘉豪", "王娟娟",
     "王蔚娜", "环海军", "罗天羿", "许小峰", "谷会娟", "邢世全", "郭鑫磊", "陈申鹏", "隆振宇", "马宁",
     "高铭", "龙月清",
+    "万凌", "云周静", "光爱红", "刘雪芹", "吴其侃", "周静", "姜明", "孙雨阳", "张权益", "戴帅汝",
+    "李凡", "李双成", "林江", "柳艳香", "武荣盛", "焦文杰", "王威", "王珂", "王秀俊", "王雪",
+    "祝成瑶", "苏子航", "赵晓威", "韦连文", "魏敏丹",
     "邓双双",
     "赵兵",
     "谷铮",
@@ -132,6 +135,10 @@ KNOWN_AUTHORS = {
     "周洁",
     "吴琼",
     "南繁",
+    "任勇", "冀雅琴", "刘明", "刘春红", "卜钰", "史国庆", "廉沫", "彭明雅", "徐卓远", "慕万峰",
+    "李海强", "李路华", "李钫城", "楚合涛", "武蓓蓓", "洪梅青", "温文", "王晋文", "王萌萌", "范晔",
+    "赖雨", "郑江伟", "郭子健", "阮帆", "陈学杰", "陈彩珠", "韩萌萌", "高华金",
+    "吉拿石达", "左希斌", "张阔", "曹源", "李相伯", "潘文亮", "王敬涛", "秦玉梅", "秦静", "罗嘉祺", "苑彩霞", "郑亮", "郭善云",
     
     "任崇勇",
     "仇梦扬",
@@ -615,6 +622,21 @@ def clean_html(text):
     return text.strip()
 
 
+def fm_list(key, value, splitter=None):
+    """把字段值写成 YAML 块式 list（单值也写成 list）。空值保持 `key: `。"""
+    if not value:
+        return f"{key}: "
+    if splitter:
+        items = [v.strip() for v in re.split(splitter, value) if v.strip()]
+    elif isinstance(value, str):
+        items = [v for v in value.split() if v.strip()]
+    else:
+        items = [str(v).strip() for v in value if str(v).strip()]
+    if not items:
+        return f"{key}: "
+    return "\n".join([f"{key}:"] + [f"  - {v}" for v in items])
+
+
 def split_authors(author):
     if not author: return author
     parts = re.split(r'[\s,，、]+', author)
@@ -672,6 +694,8 @@ def html_clean(s):
     """清理 HTML 实体和标签"""
     from html import unescape
     s = unescape(s)
+    # 双重编码残留（&amp;nbsp;→&nbsp;）或实体转 \xa0：统一为空格
+    s = s.replace("&nbsp;", " ").replace("\xa0", " ")
     return re.sub(r"<[^>]+>", "", s).strip()
 
 def sanitize_filename(s):
@@ -705,9 +729,20 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
     content_text = unescape(re.sub(r"<br\s*/?>", "\n", content_raw, flags=re.I))
     content_text = re.sub(r"<[^>]+>", "", content_text)
     content_text = re.sub(r"\n{3,}", "\n\n", content_text).strip()
-    title = html_clean(data.get("docTitle", ""))
+    title = html_clean(str(data.get("docTitle") or ""))
     final_title = title.split("——")[0].strip() if "——" in title else title
     is_pic = (final_title == "图片新闻") or (len(content_text.split("\n")) < 3 and len(content_text) < 80)
+    # 无标题（docTitle 为 null/"null"/空，多为图片新闻）：从正文首行/CS 提取，兑底"图片新闻"
+    if not final_title or final_title.lower() == "null":
+        lines = [l.strip() for l in content_text.split("\n") if l.strip()]
+        first = re.sub(r'^[◀▼▶▲◆]\s*', '', lines[0]) if lines else ""
+        if first and not first.startswith(("图为", "图片说明")):
+            final_title = first[:30]
+        elif data.get("CS", ""):
+            final_title = re.sub(r'^[◀▼▶▲◆]\s*', '', str(data.get("CS")).split(";")[0].strip())[:30]
+        else:
+            final_title = "图片新闻"
+        is_pic = True
 
     # 作者处理 (略去 简报拆分 等批量特有逻辑)
     author = ""
@@ -718,17 +753,25 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
         author = re.sub(r'《[^》]+》', '', author).strip()
         if re.search(r'[上下]转', author): author = ""
         # 清理作者串中残留的职称（正文提取路径已做，docAuthor 路径也要做）
-        author = re.sub(r'\s*(记者|通讯员|特约记者|特约通讯员)\s*', ' ', author).strip()
-        author = re.sub(r'(记者|通讯员|特约记者|特约通讯员|评论员)\s*$', '', author).strip()
+        # 不依赖空格边界："实习记者""特约记者"等胶连职称也清除
+        author = re.sub(r'(?:实习|特约)?\s*(?:记者|通讯员)\s*', ' ', author).strip()
+        author = re.sub(r'(?:实习|特约)?(?:记者|通讯员|评论员)\s*$', '', author).strip()
         author = re.sub(r'^来源[：:][^，。]*?编译[：:]\s*', '', author).strip()
+        # 尾部"报道/近日/连日来"等正文词：不依赖空格边界（如"刘雅琪报道近日"）
+        author = re.sub(r'(?:报道|文|图)?\s*(?:受|连日来|近日|日前|随着|面对|今年|截至|目前|正值|汛期)\s*$', '', author).strip()
+        author = re.sub(r'(?:报道|文|图)\s*$', '', author).strip()
     if not author:
         m = re.search(r'（([^）]+整理)）\s*$', content_text)
         if m: author = re.sub(r'整理\s*$', '', m.group(1)).strip()
         if not m: m = re.search(r'（编译[：:]\s*([\u4e00-\u9fff·、]+?)(?:来源|$)', content_text)
         if m and not author: author = m.group(1).strip()
         if not m: m = re.search(r'（来源[：:][^）]*?编译[：:]\s*([\u4e00-\u9fff·、]+)', content_text)
-        if not m: m = re.search(r'（([\u4e00-\u9fff·]{2,})）\s*$', content_text, re.MULTILINE)
-        if m and not author: author = m.group(1).strip()
+        if not m: m = re.search(r'（([\u4e00-\u9fff·\s]{2,}?)）\s*$', content_text, re.MULTILINE)
+        if m and not author:
+            candidate = re.sub(r'\s+', ' ', m.group(1)).strip()
+            # 职务/说明性括号（"作者系…副县长"等）不是署名
+            if not re.search(r'(?:作者)?系|担任|职务|记者|通讯员|副县长|县长|局长|部长|书记|主任', candidate):
+                author = candidate
         if not m: m = re.search(r'（(?:调研组成员?|作者)[：:]\s*([\u4e00-\u9fff·、]+)）', content_text)
         if m and not author: author = ' '.join(n.strip() for n in re.split(r'[、，,]', m.group(1)) if n.strip())
         if not m:
@@ -751,6 +794,8 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
         fl = content_text.split("\n")[0].strip()
         if fl and 2 <= len(fl) <= 4 and not re.match(r'^(本报讯|本报|新华社|图为|编者)', fl):
             author = split_authors(fl)
+    if author.lower() in ("null", "none"):
+        author = ""
     author = split_authors(author)
 
     ed_type = edition_type(theme)
@@ -759,15 +804,15 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
     region = existing_region or region
     
     fm = ["---", "type: 报道", "source: 中国气象报",
-          f"title: {final_title}", f"author: {author}",
+          f"title: {final_title}", fm_list("author", author),
           f"date: {date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}", f"page: {page_name}",
           f"theme: {theme}", f"edition_type: {ed_type}",
           f"headline: {'true' if order==1 else 'false'}"]
     if is_pic: fm.append("image: true")
     if subtitle: fm.append(f"subtitle: {subtitle}")
-    if existing_col: fm.append(f"column: {existing_col}")
+    if existing_col: fm.append(fm_list("column", existing_col))
     else: fm.append("column: ")
-    fm.append(f"region: {region}" if region else "region: ")
+    fm.append(fm_list("region", region, splitter=r"[,，;；]"))
     fm.append("---")
     md = "\n".join(fm) + "\n\n" + content_text + "\n"
     fname = f"{order:02d}-{sanitize_filename(final_title)}.md"
@@ -978,24 +1023,24 @@ def main(date_str):
             is_pic = False
             pic_title = ""
             # API 标题为"图片新闻"则强制视为图片新闻
-            if title == "图片新闻":
+            if title == "图片新闻" or not title or title.lower() in ("null", "none"):
                 is_pic = True
+                cs_parts = [p.strip() for p in str(data.get("CS") or "").split(";") if p.strip() and p.strip().lower() != "null"]
                 lines = [l.strip() for l in content_text.split("\n") if l.strip()]
                 if lines:
                     first = re.sub(r'^[◀▼▶▲◆]\s*', '', lines[0])
                     pic_title = first[:30]
-                elif data.get("CS", ""):
-                    cs = data.get("CS", "")
-                    content_text = "\n".join([i.strip() for i in cs.replace(";","\n").split("\n") if i.strip()])
-                    pic_title = re.sub(r'^[◀▼▶▲◆]\s*', '', cs.split(";")[0].strip())[:30]
+                elif cs_parts:
+                    content_text = "\n".join(cs_parts)
+                    pic_title = re.sub(r'^[◀▼▶▲◆]\s*', '', cs_parts[0])[:30]
                 if not pic_title:
                     pic_title = "图片新闻"
             elif content_raw:
                 lines = [l.strip() for l in content_text.split("\n") if l.strip()]
-                if not lines and data.get("CS", ""):
-                    cs = data.get("CS", "")
-                    content_text = "\n".join([i.strip() for i in cs.replace(";","\n").split("\n") if i.strip()])
-                    first = re.sub(r'^[◀▼▶▲◆]\s*', '', cs.split(";")[0].strip())
+                cs_parts = [p.strip() for p in str(data.get("CS") or "").split(";") if p.strip() and p.strip().lower() != "null"]
+                if not lines and cs_parts:
+                    content_text = "\n".join(cs_parts)
+                    first = re.sub(r'^[◀▼▶▲◆]\s*', '', cs_parts[0])
                     pic_title = first[:30]
                     is_pic = True
                 elif len(lines) <= 3 and all(len(l) < 60 for l in lines):
@@ -1045,11 +1090,11 @@ def main(date_str):
                             
                             item_fm = [
                                 "---", "type: 报道", "source: 中国气象报",
-                                f"title: {item_title}", f"author: {item_author}",
+                                f"title: {item_title}", fm_list("author", item_author),
                                 f"date: {date_dash}", f"page: {page}",
                                 f"theme: {theme}", f"edition_type: {ed_type}",
-                                "headline: false", "column: 要闻简报",
-                                f"region: {item_region}" if item_region else "region: ",
+                                "headline: false", fm_list("column", "要闻简报"),
+                                fm_list("region", item_region, splitter=r"[,，;；]"),
                                 "---",
                             ]
                             item_md = "\n".join(item_fm) + "\n\n" + item + "\n"
@@ -1115,6 +1160,8 @@ def main(date_str):
                     if not re.match(r'^(本报讯|本报|新华社|图为|编者)', first_line):
                         author = split_authors(first_line)
             # 用姓氏启发式分割粘连的多作者名
+            if author.lower() in ("null", "none"):
+                author = ""
             author = split_authors(author)
 
             is_headline = (order == 1)  # 默认每版首篇为头条，有误再改
@@ -1125,7 +1172,7 @@ def main(date_str):
                 "type: 报道",
                 "source: 中国气象报",
                 f"title: {final_title}",
-                f"author: {author}",
+                fm_list("author", author),
                 f"date: {date_dash}",
                 f"page: {page}",
                 f"theme: {theme}",
@@ -1146,7 +1193,7 @@ def main(date_str):
             if not col:
                 # column 留空，后续由 vision 分析补充
                 pass
-            fm.append(f"column: {col}" if col else "column: ")
+            fm.append(fm_list("column", col))
             # region：如果文件已存在且有值则保留，否则自动提取
             region = extract_region(final_title, content_text)
             # 图片新闻/图说不标地区
@@ -1163,7 +1210,7 @@ def main(date_str):
                             if _old_r:
                                 region = _old_r
                             break
-            fm.append(f"region: {region}" if region else "region: ")
+            fm.append(fm_list("region", region, splitter=r"[,，;；]"))
             if subtitle:
                 fm.append(f"subtitle: {subtitle}")
             fm.append("---")

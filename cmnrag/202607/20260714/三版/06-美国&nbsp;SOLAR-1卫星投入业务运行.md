@@ -2,13 +2,16 @@
 type: 报道
 source: 中国气象报
 title: 美国 SOLAR-1卫星投入业务运行
-author: 何静怡 王玉生
+author:
+  - 何静怡
+  - 王玉生
 date: 2026-07-14
 page: 三版
 theme: 科技
 edition_type: 常规版
 headline: false
-column: 领略 国际气象发展前沿 中国气象局气象发展与规划院协办
+column:
+  - 领略 国际气象发展前沿
 region: 
 ---
 

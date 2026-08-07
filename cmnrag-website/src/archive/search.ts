@@ -18,6 +18,8 @@ export function buildArticleQuery(filters: ArticleFilters = {}): BuiltQuery {
 
 	// SQLite's LIKE implementation can reject long Unicode patterns in D1.
 	// instr() treats the user input as literal text and preserves partial matching.
+	// D1 不支持 json_each 表值函数；author/region/column_name 存 JSON 数组字符串，
+	// 直接 instr 子串匹配等价于改造前的行为（多值各项的任意子串均能命中）。
 	if (filters.columnName) {
 		where.push("instr(column_name, ?) > 0");
 		params.push(filters.columnName);

@@ -2,14 +2,20 @@
 type: 报道
 source: 中国气象报
 title: 察风云守四时惠民生——看佛山气象如何深度融入城市高质量发展
-author: 唐淼 王天巍 梁华玲 张少婷 梁钧怡
+author:
+  - 唐淼
+  - 王天巍
+  - 梁华玲
+  - 张少婷
+  - 梁钧怡
 date: 2026-07-02
 page: 四版
 theme: 专题
 edition_type: 策划版
 headline: true
 column: 
-region: 广东省佛山市
+region:
+  - 广东省佛山市
 ---
 
 本报记者 唐淼 通讯员 王天巍梁华玲张少婷梁钧怡 

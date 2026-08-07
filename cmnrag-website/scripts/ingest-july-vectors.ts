@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { chunkArticle } from "../src/ingest/chunkArticle";
-import { buildEmbeddingText, discoverJulyFiles } from "../src/ingest/julyArchive";
+import { buildEmbeddingText, discoverMonthFiles } from "../src/ingest/julyArchive";
 import { vectorIdForChunk } from "../src/ingest/vectorId";
 import { parseArticle } from "../src/archive/parseArticle";
 
@@ -96,14 +96,16 @@ async function upsertVectors(rows: ChunkRow[], vectors: number[][]) {
 async function upsertArticle(article: ArticleRow) {
 	await execute(`INSERT INTO articles(article_id, source_path, source_sha256, type, source, title, subtitle, author, published_date, page, theme, edition_type, headline, image, column_name, region, content)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(source_path) DO UPDATE SET article_id=excluded.article_id, source_sha256=excluded.source_sha256, type=excluded.type, source=excluded.source, title=excluded.title, subtitle=excluded.subtitle, author=excluded.author, published_date=excluded.published_date, page=excluded.page, theme=excluded.theme, edition_type=excluded.edition_type, headline=excluded.headline, image=excluded.image, column_name=excluded.column_name, region=excluded.region, content=excluded.content, imported_at=CURRENT_TIMESTAMP`, [article.articleId, article.sourcePath, article.sourceSha256, article.type, article.source, article.title, article.subtitle, article.author, article.date, article.page, article.theme, article.editionType, article.headline ? 1 : 0, article.image ? 1 : 0, article.columnName, article.region, article.content]);
+ON CONFLICT(source_path) DO UPDATE SET article_id=excluded.article_id, source_sha256=excluded.source_sha256, type=excluded.type, source=excluded.source, title=excluded.title, subtitle=excluded.subtitle, author=excluded.author, published_date=excluded.published_date, page=excluded.page, theme=excluded.theme, edition_type=excluded.edition_type, headline=excluded.headline, image=excluded.image, column_name=excluded.column_name, region=excluded.region, content=excluded.content, imported_at=CURRENT_TIMESTAMP`, [article.articleId, article.sourcePath, article.sourceSha256, article.type, article.source, article.title, article.subtitle, JSON.stringify(article.author), article.date, article.page, article.theme, article.editionType, article.headline ? 1 : 0, article.image ? 1 : 0, JSON.stringify(article.columnName), JSON.stringify(article.region), article.content]);
 }
 
 async function main() {
-	const files = await discoverJulyFiles(sourceRoot);
+	// 月份列表：CMNRAG_MONTHS=202607,202608 或默认 7、8 月
+	const months = (process.env.CMNRAG_MONTHS ?? "202607,202608").split(",").map((s) => s.trim()).filter(Boolean);
+	const files = await discoverMonthFiles(sourceRoot, months);
 	const articles = await Promise.all(files.map(async (file) => parseArticle(await readFile(file, "utf8"), relative(sourceRoot, file).split(sep).join("/"))));
 	const runId = randomUUID();
-	await execute("INSERT INTO ingest_runs(run_id, started_at, source_root, article_total) VALUES (?, datetime('now'), ?, ?)", [runId, `${sourceRoot}/202607`, articles.length]);
+	await execute("INSERT INTO ingest_runs(run_id, started_at, source_root, article_total) VALUES (?, datetime('now'), ?, ?)", [runId, `${sourceRoot}/${months.join(",")}`, articles.length]);
 	// 增量：以 chunks 表嵌入时的 source_sha256 为判据（不能用 articles 表——import 脚本会
 	// 先把它更新为新值，导致内容变了向量却永不重刷）。本地 sha 与已嵌入 sha 不一致或
 	// 无嵌入记录的文章整体重刷其分块。
@@ -136,7 +138,7 @@ ON CONFLICT(chunk_id) DO UPDATE SET vector_id=excluded.vector_id, article_id=exc
 		console.log(`embedded ${Math.min(offset + batch.length, chunks.length)}/${chunks.length}`);
 	}
 	await execute("UPDATE ingest_runs SET completed_at=datetime('now'), inserted_count=?, failed_count=0 WHERE run_id=?", [toRefresh.length, runId]);
-	console.log(JSON.stringify({ runId, articles: toRefresh.length, skipped, chunks: chunks.length, sourceRoot: `${sourceRoot}/202607` }));
+	console.log(JSON.stringify({ runId, articles: toRefresh.length, skipped, chunks: chunks.length, sourceRoot: `${sourceRoot}/${months.join(",")}` }));
 }
 
 main().catch(async (error) => {

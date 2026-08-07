@@ -8,7 +8,8 @@ page: 三版
 theme: 科技
 edition_type: 常规版
 headline: false
-column: 领略 国际气象发展前沿 中国气象局气象发展与规划院协办
+column:
+  - 领略 国际气象发展前沿
 region: 
 ---
 

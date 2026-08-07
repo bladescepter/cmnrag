@@ -2,14 +2,17 @@
 type: 报道
 source: 中国气象报
 title: 从手工翻拍到RTE系统推广
-author: 古德
+author:
+  - 古德
 date: 2026-06-02
 page: 四版
 theme: 科普
 edition_type: 策划版
 headline: false
-column: 亲历者记忆
-region: 安徽省
+column:
+  - 亲历者记忆
+region:
+  - 安徽省
 ---
 
 1966年，我进入安徽省气象台。从那以来，我见证了我国气象资料的数据接收、处理、自动绘制能力的从无到有、从小到大、从弱到强的发展历程。回望过往，若问起这其中印象最深的几件事，我想从自己动手解决自动查阅天气图难题说起。

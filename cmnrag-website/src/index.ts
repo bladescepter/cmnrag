@@ -15,14 +15,45 @@ const json = (body: unknown, status = 200) =>
 		headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
 	});
 
+/** D1 存的 author/column_name/region 是 JSON 数组字符串，输出时解析为数组；兼容历史纯字符串 */
+function parseList(value: unknown): string[] {
+	if (typeof value !== "string" || !value) return [];
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (Array.isArray(parsed)) return parsed.filter((item): item is string => typeof item === "string");
+	} catch {
+		/* fallthrough: 历史分隔符字符串 */
+	}
+	return [value];
+}
+
 function error(message: string, status: number) {
 	return json({ error: message }, status);
 }
 
 async function listFacet(url: URL, env: Env, field: "column_name" | "theme") {
-	const query = buildFacetQuery(field, url.searchParams.get("q")?.trim() ?? "");
-	const result = await env.DB.prepare(query.sql).bind(...query.params).all<{ value: string; count: number }>();
-	return json({ items: result.results });
+	const partial = url.searchParams.get("q")?.trim() ?? "";
+	if (field === "theme") {
+		const query = buildFacetQuery(field, partial);
+		const result = await env.DB.prepare(query.sql).bind(...query.params).all<{ value: string; count: number }>();
+		return json({ items: result.results });
+	}
+	// column_name 存 JSON 数组字符串且 D1 无 json_each：全量拉回后在 JS 层展开聚合
+	const sql = partial
+		? "SELECT column_name FROM articles WHERE column_name <> '' AND instr(column_name, ?) > 0"
+		: "SELECT column_name FROM articles WHERE column_name <> ''";
+	const result = await env.DB.prepare(sql).bind(...(partial ? [partial] : [])).all<{ column_name: string }>();
+	const counts = new Map<string, number>();
+	for (const row of result.results) {
+		for (const item of parseList(row.column_name)) {
+			counts.set(item, (counts.get(item) ?? 0) + 1);
+		}
+	}
+	const items = [...counts.entries()]
+		.map(([value, count]) => ({ value, count }))
+		.sort((a, b) => b.count - a.count || (a.value < b.value ? -1 : a.value > b.value ? 1 : 0))
+		.slice(0, partial ? 20 : 100);
+	return json({ items });
 }
 
 async function listArticles(url: URL, env: Env) {
@@ -44,12 +75,19 @@ async function listArticles(url: URL, env: Env) {
 		env.DB.prepare(countSql).bind(...params).first<{ total: number }>(),
 	]);
 	const total = countResult?.total ?? 0;
-	return json({ items: result.results, total, offset, limit, has_more: offset + result.results.length < total });
+	const items = (result.results as Array<Record<string, unknown>>).map((row) => ({
+		...row,
+		author: parseList(row.author),
+		column_name: parseList(row.column_name),
+		region: parseList(row.region),
+	}));
+	return json({ items, total, offset, limit, has_more: offset + items.length < total });
 }
 
 async function getArticle(id: string, env: Env) {
-	const result = await env.DB.prepare("SELECT article_id, source_path, title, subtitle, author, published_date, page, theme, edition_type, headline, image, column_name, region, content FROM articles WHERE article_id = ?").bind(id).first();
-	return result ? json(result) : error("not_found", 404);
+	const result = await env.DB.prepare("SELECT article_id, source_path, title, subtitle, author, published_date, page, theme, edition_type, headline, image, column_name, region, content FROM articles WHERE article_id = ?").bind(id).first<Record<string, unknown>>();
+	if (!result) return error("not_found", 404);
+	return json({ ...result, author: parseList(result.author), column_name: parseList(result.column_name), region: parseList(result.region) });
 }
 
 type EmbeddingResponse = { data: number[][] };
@@ -105,7 +143,7 @@ async function answerQuestion(request: Request, env: Env) {
 		const prompt = buildRagPrompt(question, sources.map((source) => ({ id: source.chunk_id, title: source.title, date: source.date, page: source.page, content: source.content })), history);
 		const generated = await env.AI.run(GENERATION_MODEL, { messages: [{ role: "user", content: prompt }], max_tokens: 700, temperature: 0.2 }) as { response?: string; choices?: Array<{ message?: { content?: string } }> };
 		const answer = generated.response ?? generated.choices?.[0]?.message?.content ?? "现有档案未提供足够依据。";
-		return json({ answer, sources: sources.map((source, index) => ({ number: index + 1, article_id: source.article_id, source_path: source.source_path, title: source.title, date: source.date, page: source.page, author: source.author, region: source.region, excerpt: source.content.slice(0, 500) })) });
+		return json({ answer, sources: sources.map((source, index) => ({ number: index + 1, article_id: source.article_id, source_path: source.source_path, title: source.title, date: source.date, page: source.page, author: parseList(source.author), region: parseList(source.region), excerpt: source.content.slice(0, 500) })) });
 	} catch (caught) {
 		const message = caught instanceof Error ? caught.message : "ai_unavailable";
 		if (/quota|neuron|limit|429/i.test(message)) return error("ai_daily_limit", 429);
