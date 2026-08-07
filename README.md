@@ -1,8 +1,8 @@
 # cmnrag — 中国气象报稿件资料库
 
-《中国气象报》档案检索系统：**结构化稿件资料库 + 全文检索网站 + AI 综合问答**。
+《中国气象报》档案检索系统：**结构化稿件资料库 + 全文检索网站 + 基于 RAG 的 AI 综合问答**。
 
-已清洗的报纸稿件以 Markdown + YAML frontmatter 形式入库（唯一数据真源），经 Cloudflare Workers 检索服务对外提供，线上入口：<https://cfzx.xiyuan.wiki>
+已清洗的报纸稿件以 Markdown + YAML frontmatter 形式入库，经 Cloudflare Workers 检索服务对外提供，线上入口：<https://cfzx.xiyuan.wiki>
 
 ## 基本功能
 
