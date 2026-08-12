@@ -59,6 +59,8 @@ SURNAMES = set(
     '易慎戈廖庾终暨居衡步都耿满弘匡国文寇广禄阙东欧殳'
     '沃利蔚越夔隆师巩厍聂晁勾敖融冷訾辛阚那简饶空曾沙'
     '乜养鞠须丰巢关蒯相查后荆红游竺权逯盖益桓公光'
+    '随'
+    '他'
 )
 
 
@@ -135,6 +137,18 @@ KNOWN_AUTHORS = {
     "周洁",
     "吴琼",
     "南繁",
+    "于子敏", "傅新姝", "张思远", "张艳品", "张金平", "徐娜", "李欣", "杨韬", "梁艳", "洪宇",
+    "焦希宽", "王倩倩", "王利轩", "王勃勋", "王坤", "王志诚", "葛翔", "薛文博", "赵桂芳", "郝泽楠",
+    "郭蓉", "高迁", "魏庆伟", "齐晓华", "马超", "王豫燕", "王继梅",
+    "付晓辉", "向秋卓玛", "周宇航", "姚嫚", "姚梦圆", "姜殿荣", "张丹", "张元", "张晴媚", "张静雯",
+    "徐伟杰", "李夏君", "林思敏", "毕淼", "毛灏灏", "熊晓辉", "王亚静", "职新利", "蔡一琳", "谢妍",
+    "赵鸿", "邓舒予", "郑文君", "郭连云", "陈华忠", "黎陈烨", "陈东辉",
+    "卫文芳", "哈斯塔木嘎", "张玮", "张琳皓", "张露丹", "张马兵", "彭华青", "朱燕", "李伊吟", "李兴文",
+    "李帅希", "李敏", "李甄甄", "李辉", "李迪", "杨云茜", "段浩", "涂志坚", "王晓峰", "白璐",
+    "童红梅", "罗妮妮", "范倩文", "谢盼", "赵现纲", "郑勇",
+    "刘曙红", "吴拓", "孙少杰", "宛霞", "庞镜阳", "张玉婷", "张钤", "彭明霞", "李信君", "李森",
+    "杨芳", "洪闽", "王小宁", "王彦峰", "王迎迎", "程远", "胡兴才", "袁旷卓", "许肖璐", "许钰文",
+    "谢冰", "赖芬芬", "郭华", "郭圳勉", "阮惠华", "阴汝冰", "陆艳", "马兆越",
     "任勇", "冀雅琴", "刘明", "刘春红", "卜钰", "史国庆", "廉沫", "彭明雅", "徐卓远", "慕万峰",
     "李海强", "李路华", "李钫城", "楚合涛", "武蓓蓓", "洪梅青", "温文", "王晋文", "王萌萌", "范晔",
     "赖雨", "郑江伟", "郭子健", "阮帆", "陈学杰", "陈彩珠", "韩萌萌", "高华金",
@@ -591,7 +605,24 @@ KNOWN_AUTHORS = {
     "杨帆冶", "杨泽堃", "杨莹", "林泽微", "梁健", "段昊书", "段艺萍", "沈文颖", "王万筠", "王娣",
     "王畅", "王美丽", "石美芬", "罗响", "胡扬", "蒋芷晴", "赵小兰", "赵海", "迟茜元", "邓敏佳",
     "邱迪", "高亚敏", "高静", "黄琬婷", "黄舒倩", "黎家蓉",
+    "丁霖", "他文波", "付亚楠", "刘磊", "包君俏", "周弘媛", "安海涛", "朱磊磊", "李富敏", "李长生",
+    "杨千慧", "杨欣洁", "熊超慧", "王小萍", "王玫", "田盼盼", "程译萱", "葛永乐", "赵旭涵", "赵继梅",
+    "邓汝伊", "郝倩楠", "郭飞", "金雪", "闫妍", "陈才", "陈田凤", "随金明", "韩晨超", "黄健",
+    "乔斌", "任海山", "冉阳", "刘亚丽", "刘原岳", "叶晶晶", "周信荔", "唐韬", "孙志娟", "宋水华",
+    "宋茜", "徐方姝", "徐晨蕾", "方子轩", "施思", "曲原", "曹红祖", "朱延爱", "李文奕", "李晓荣",
+    "李甫", "杨久平", "杨郭程", "樊洁馨", "毛明红", "牟德宏", "王兴环", "王兵", "王庆语", "索长利",
+    "郑玮华", "钱浩", "阿布力克木·艾合买提尼亚孜", "陈天宇", "陈子祎", "陈思宇",
+    "丁兮", "付廷加", "兰海林", "吴永斌", "孙琪", "孙蕾", "庄嘉", "张立生", "徐梓力", "李洋",
+    "林晓东", "王华伟", "王向", "王寅娟", "王寿辉", "王秀荣", "王维国", "王莉萍", "祁宁", "米卫红",
+    "蒋曼", "蔡亮", "虞佳姣", "虞建飞", "谢伦胜", "赵刚", "赵雨薇", "郭海燕", "钟燕川", "陈慧雯",
+    "陈懿妮", "马晓青", "黄亿", "黄颖",
 }
+
+# 姓氏先验：库内已知名首字频率（大姓如王李张刘陈频率高 → 更可信）
+SURNAME_FREQ = {}
+for _a in KNOWN_AUTHORS:
+    if _a:
+        SURNAME_FREQ[_a[0]] = SURNAME_FREQ.get(_a[0], 0) + 1
 
 
 def month_day(date_str):
@@ -637,48 +668,142 @@ def fm_list(key, value, splitter=None):
     return "\n".join([f"{key}:"] + [f"  - {v}" for v in items])
 
 
+def _anchor_segments(part):
+    """在 part 中定位所有库内已知名（非重叠、覆盖最大化、每位置最长优先）。
+
+    返回 [(start, end, name)]。库内名字整体保留，绝不被后续启发式破坏。
+    """
+    n = len(part)
+    hits = [[] for _ in range(n)]
+    for i in range(n):
+        for length in (4, 3, 2):
+            if i + length <= n and part[i:i + length] in KNOWN_AUTHORS:
+                hits[i].append((length, part[i:i + length]))
+        # 带·少数民族长名（如 阿布力克木·艾合买提尼亚孜）：遍历库内含·名做全文匹配
+        if '·' in part:
+            for _name in KNOWN_AUTHORS:
+                if '·' in _name:
+                    _idx = part.find(_name)
+                    if _idx != -1:
+                        hits[_idx].append((len(_name), _name))
+    best = [0] * (n + 1)
+    choice = [None] * n
+    for i in range(n - 1, -1, -1):
+        opt = best[i + 1]
+        pick = None
+        for length, name in hits[i]:
+            cand = length + best[i + length]
+            if cand > opt:
+                opt = cand
+                pick = (length, name)
+        best[i] = opt
+        choice[i] = pick
+    segs = []
+    i = 0
+    while i < n:
+        if choice[i] is None:
+            j = i + 1
+            while j < n and choice[j] is None:
+                j += 1
+            segs.append((i, j, None))
+            i = j
+        else:
+            length, name = choice[i]
+            segs.append((i, i + length, name))
+            i += length
+    return segs
+
+
+def _surname_bonus(ch):
+    """段首字作为姓氏的先验加分：库内高频姓（≥5 人）更可信 → +2"""
+    return 2 if SURNAME_FREQ.get(ch, 0) >= 5 else 0
+
+
+def _split_unknown(seg):
+    """启发式切分未知段（库内无锚点）：每段 2-3 字、段首须为常见姓，
+    3 字段优先（长度平方和评分）+ 姓氏先验加成，首字非姓时低分保留交人工/LLM。"""
+    n = len(seg)
+    if n <= 3:
+        return [seg]
+    if n == 4:
+        if seg[0] in SURNAMES and seg[2] in SURNAMES:
+            return [seg[:2], seg[2:]]
+        return [seg]
+    cache = {}
+
+    def dp(i):
+        if i in cache:
+            return cache[i]
+        if i >= n:
+            cache[i] = (0, [[]])
+            return cache[i]
+        if n - i < 2:  # 剩余 1 字无法成段 → 无解
+            cache[i] = (None, [])
+            return cache[i]
+        best = -1
+        sols = []
+
+        def add(score, cand):
+            nonlocal best
+            if score > best:
+                best = score
+                sols.clear()
+                sols.append(cand)
+            elif score == best:
+                sols.append(cand)
+
+        # 3 字段（得分 9 = 3²，+ 姓氏先验）
+        if seg[i] in SURNAMES and i + 3 <= n:
+            sc, subs = dp(i + 3)
+            if sc is not None:
+                for sub in subs:
+                    add(sc + 9 + _surname_bonus(seg[i]), [seg[i:i + 3]] + sub)
+        # 2 字段（得分 4 = 2²，+ 姓氏先验）
+        if seg[i] in SURNAMES and i + 2 <= n:
+            sc, subs = dp(i + 2)
+            if sc is not None:
+                for sub in subs:
+                    add(sc + 4 + _surname_bonus(seg[i]), [seg[i:i + 2]] + sub)
+        # 兜底：首字非姓 → 整体保留（低分 1，交人工/LLM 复核）
+        if seg[i] not in SURNAMES:
+            add(1, [seg[i:]])
+        cache[i] = (best, sols)
+        return cache[i]
+
+    best, sols = dp(0)
+    if not sols:
+        sols = [[seg]]
+    if len(sols) > 1:
+        print(f"  ⚠ 未知作者串歧义: [{seg}] 候选: {' | '.join('/'.join(s) for s in sols)}（取第一种，请人工复核）", file=sys.stderr)
+    return sols[0]
+
+
 def split_authors(author):
-    if not author: return author
+    if not author:
+        return author
     parts = re.split(r'[\s,，、]+', author)
     result = []
     for part in parts:
-        if not part: continue
-        if len(part) <= 2 or re.search(r'[\s,，、]', part):
+        if not part:
+            continue
+        if len(part) <= 2:
             result.append(part)
             continue
-        # 尝试用已知作者库分割
-        if len(part) > 4:
-            known_result = []
-            i = 0
-            while i < len(part):
-                matched = False
-                for length in [4, 3, 2]:
-                    if i + length <= len(part) and part[i:i+length] in KNOWN_AUTHORS:
-                        known_result.append(part[i:i+length])
-                        i += length
-                        matched = True
-                        break
-                if not matched:
-                    known_result.append(part[i])
-                    i += 1
-            covered = sum(len(x) for x in known_result)
-            single_count = sum(1 for x in known_result if len(x) == 1)
-            if covered == len(part) and single_count == 0:
-                result.append(' '.join(known_result))
-                continue
-        # 4字双姓名（陈飘李雁→陈飘 李雁）
-        if len(part) == 4 and part[0] in SURNAMES and part[2] in SURNAMES:
-            result.append(part[:2] + ' ' + part[2:])
-        elif len(part) <= 4:
+        # 阶段1：锚点钉住——库内已知名整体保留（DP 最大覆盖）
+        anchored = _anchor_segments(part)
+        unknown_part = ''.join(part[s:e] for s, e, n in anchored if n is None)
+        if '·' in unknown_part:
+            # 带·名未入库：无法可靠切分，整段保留交人工（不切碎）
+            print(f"  ⚠ 带·名字需人工确认: {part}", file=sys.stderr)
             result.append(part)
-        else:
-            pieces = []
-            for i, ch in enumerate(part):
-                if i > 1 and ch in SURNAMES and i < len(part) - 1:
-                    seg = ''.join(pieces).split(' ')[-1] if ' ' in ''.join(pieces) else ''.join(pieces)
-                    if len(seg) >= 3 or (len(seg) == 2 and len(part) - i >= 2): pieces.append(' ')
-                pieces.append(ch)
-            result.append(''.join(pieces))
+            continue
+        segs = []
+        for (s, e, name) in anchored:
+            if name is not None:
+                segs.append(name)
+            else:
+                segs.extend(_split_unknown(part[s:e]))
+        result.append(' '.join(segs))
     return ' '.join(result)
 
 
@@ -748,29 +873,54 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
     author = ""
     doc_author = data.get("docAuthor", "")
     if doc_author:
-        author = re.sub(r'^(新华社|本报)(特约)?(记者|通讯员)?\s*', '', doc_author).strip()
+        author = re.sub(r'^(新华社|本报)(特约)?(记者|通\s*讯\s*员)?\s*', '', doc_author).strip()
         author = re.sub(r'《[^》]+》记者[\u4e00-\u9fff]{2,4}\s*', '', author).strip()
         author = re.sub(r'《[^》]+》', '', author).strip()
         if re.search(r'[上下]转', author): author = ""
         # 清理作者串中残留的职称（正文提取路径已做，docAuthor 路径也要做）
         # 不依赖空格边界："实习记者""特约记者"等胶连职称也清除
-        author = re.sub(r'(?:实习|特约)?\s*(?:记者|通讯员)\s*', ' ', author).strip()
-        author = re.sub(r'(?:实习|特约)?(?:记者|通讯员|评论员)\s*$', '', author).strip()
+        author = re.sub(r'(?:实习|特约)?\s*(?:记者|通\s*讯\s*员)\s*', ' ', author).strip()
+        author = re.sub(r'(?:实习|特约)?(?:记者|通\s*讯\s*员|评论员)\s*$', '', author).strip()
         author = re.sub(r'^来源[：:][^，。]*?编译[：:]\s*', '', author).strip()
         # 尾部"报道/近日/连日来"等正文词：不依赖空格边界（如"刘雅琪报道近日"）
         author = re.sub(r'(?:报道|文|图)?\s*(?:受|连日来|近日|日前|随着|面对|今年|截至|目前|正值|汛期)\s*$', '', author).strip()
         author = re.sub(r'(?:报道|文|图)\s*$', '', author).strip()
+    # 正文开头署名提取：docAuthor 非空也执行，合并去重（API 可能漏记者/通讯员）
+    _lead = ""
+    _m2 = re.search(r'(?:本报讯|本报)\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*([\u4e00-\u9fff· ]+?)(?:\s*报道|，|\n)', content_text[:300])
+    if not _m2:
+        _m2 = re.search(r'(?:本报讯|本报)\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)?\s*([\u4e00-\u9fff· ]+)', content_text[:200])
+    if _m2:
+        _lead = re.sub(r'\s+', ' ', _m2.group(1).strip())
+        _lead = re.sub(r'\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*', ' ', _lead).strip()
+        _lead = re.sub(r'(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者|评论员)\s*$', '', _lead).strip()
+        _lead = re.sub(r'^来源[：:][^，。]*?编译[：:]\s*', '', _lead).strip()
+        if re.search(r'^(本报\s*)?(评论员|记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*$', _lead):
+            _lead = ""
+        _lead = re.sub(r'\s+(受|连日来|近日|日前|随着|面对|今年|今年第|今年以来|截至|目前|正值|汛期|编者按|最近|超长|连日|眼下|当前|进入)\s*$', '', _lead).strip()
+        _lead = re.sub(r'\s+第\d+号?\s*$', '', _lead).strip()
+    if _lead:
+        # 人名校验：每段须为 2-4 字且首字是常见姓氏或已入库；否则 LEAD 不可靠，宁缺勿错（走文末/人工）
+        _segs = _lead.split()
+        if not (all(2 <= len(s) <= 4 for s in _segs) and all(s in KNOWN_AUTHORS or s[0] in SURNAMES for s in _segs)):
+            _lead = ""
+    if _lead:
+        _names = author.split() if author else []
+        for _n in _lead.split():
+            if _n and _n not in _names:
+                _names.append(_n)
+        author = ' '.join(_names)
     if not author:
         m = re.search(r'（([^）]+整理)）\s*$', content_text)
         if m: author = re.sub(r'整理\s*$', '', m.group(1)).strip()
-        if not m: m = re.search(r'（编译[：:]\s*([\u4e00-\u9fff·、]+?)(?:来源|$)', content_text)
+        if not m: m = re.search(r'（编译[：:]\s*([\u4e00-\u9fff·、]+?)(?:来源|[）)]|$)', content_text)
         if m and not author: author = m.group(1).strip()
         if not m: m = re.search(r'（来源[：:][^）]*?编译[：:]\s*([\u4e00-\u9fff·、]+)', content_text)
         if not m: m = re.search(r'（([\u4e00-\u9fff·\s]{2,}?)）\s*$', content_text, re.MULTILINE)
         if m and not author:
             candidate = re.sub(r'\s+', ' ', m.group(1)).strip()
             # 职务/说明性括号（"作者系…副县长"等）不是署名
-            if not re.search(r'(?:作者)?系|担任|职务|记者|通讯员|副县长|县长|局长|部长|书记|主任', candidate):
+            if not re.search(r'(?:作者)?系|担任|职务|记者|通\s*讯\s*员|副县长|县长|局长|部长|书记|主任', candidate):
                 author = candidate
         if not m: m = re.search(r'（(?:调研组成员?|作者)[：:]\s*([\u4e00-\u9fff·、]+)）', content_text)
         if m and not author: author = ' '.join(n.strip() for n in re.split(r'[、，,]', m.group(1)) if n.strip())
@@ -779,16 +929,8 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
             if pa: author = ' '.join(dict.fromkeys(
                 re.sub(r'^文', '', n).strip() for n in pa if re.sub(r'^文', '', n).strip()
             ))
-        if not author:
-            m2 = re.search(r'(?:本报讯|本报)\s*(?:记者|通讯员|特约记者|特约通讯员)\s*([\u4e00-\u9fff\s]+?)(?:\s*报道|，)', content_text[:300])
-            if not m2: m2 = re.search(r'(?:本报讯|本报)\s*(?:记者|通讯员|特约记者|特约通讯员)?\s*([\u4e00-\u9fff\s]+)', content_text[:200])
-            if m2:
-                author = re.sub(r'\s+', ' ', m2.group(1).strip())
-                author = re.sub(r'\s*(记者|通讯员|特约记者|特约通讯员)\s*', ' ', author).strip()
-                author = re.sub(r'(记者|通讯员|特约记者|特约通讯员|评论员)\s*$', '', author).strip()
-                if re.search(r'^(本报\s*)?(评论员|记者|通讯员|特约记者|特约通讯员)\s*$', author): author = ""
             # 仅标"本报评论员"无实际作者时清空
-            if not author and re.search(r'^本报评论员', content_text[:30]) and not re.search(r'本报(记者|通讯员)', content_text[:30]): author = ""
+            if not author and re.search(r'^本报评论员', content_text[:30]) and not re.search(r'本报(记者|通\s*讯\s*员)', content_text[:30]): author = ""
             author = re.sub(r'\s+(受|连日来|近日|日前|随着|面对|今年|截至|目前|正值|汛期)\s*$', '', author).strip()
     if not author:
         fl = content_text.split("\n")[0].strip()
@@ -1111,7 +1253,7 @@ def main(date_str):
             author = ""
             doc_author = data.get("docAuthor", "")
             if doc_author:
-                author = re.sub(r'^(新华社|本报)(特约)?(记者|通讯员)?\s*', '', doc_author).strip()
+                author = re.sub(r'^(新华社|本报)(特约)?(记者|通\s*讯\s*员)?\s*', '', doc_author).strip()
                 # 去掉其他媒体记者，如《中国应急管理报》记者张三
                 author = re.sub(r'《[^》]+》记者[\u4e00-\u9fff]{2,4}\s*', '', author).strip()
                 # 去掉残留的《》内容
@@ -1119,13 +1261,44 @@ def main(date_str):
                 # "下转第三版"/"上接第一版"等排版信息不是作者
                 if re.search(r'[上下]转', author):
                     author = ""
+            # 正文开头署名提取：docAuthor 非空也执行，合并去重（API 可能漏记者/通讯员）
+            _lead = ""
+            _m2 = re.search(r'(?:本报讯|本报)\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*([\u4e00-\u9fff· ]+?)(?:\s*报道|，|\n)', content_text[:300])
+            if not _m2:
+                _m2 = re.search(r'(?:本报讯|本报)\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)?\s*([\u4e00-\u9fff· ]+)', content_text[:200])
+            if _m2:
+                _lead = re.sub(r'\s+', ' ', _m2.group(1).strip())
+                _lead = re.sub(r'\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*', ' ', _lead).strip()
+                _lead = re.sub(r'(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者|评论员)\s*$', '', _lead).strip()
+                _lead = re.sub(r'^来源[：:][^，。]*?编译[：:]\s*', '', _lead).strip()
+                if re.search(r'^(本报\s*)?(评论员|记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*$', _lead):
+                    _lead = ""
+                _lead = re.sub(r'\s+(受|连日来|近日|日前|随着|面对|今年|今年第|今年以来|截至|目前|正值|汛期|编者按|最近|超长|连日|眼下|当前|进入)\s*$', '', _lead).strip()
+            _lead = re.sub(r'\s+第\d+号?\s*$', '', _lead).strip()
+            if _lead:
+                # 人名校验：每段须为 2-4 字且首字是常见姓氏或已入库；否则 LEAD 不可靠，宁缺勿错（走文末/人工）
+                _segs = _lead.split()
+                if not (all(2 <= len(s) <= 4 for s in _segs) and all(s in KNOWN_AUTHORS or s[0] in SURNAMES for s in _segs)):
+                    _lead = ""
+            if _lead:
+                _names = author.split() if author else []
+                for _n in _lead.split():
+                    if _n and _n not in _names:
+                        _names.append(_n)
+                author = ' '.join(_names)
             if not author:
                 # 尝试从正文末尾提取(整理)或(XX)
                 m = re.search(r'（([^）]+整理)）\s*$', content_text)
+                if m: author = re.sub(r'整理\s*$', '', m.group(1)).strip()
                 if not m:
-                    m = re.search(r'（编译[：:]\s*([\u4e00-\u9fff·、]+?)(?:来源|$)', content_text)
+                    m = re.search(r'（编译[：:]\s*([\u4e00-\u9fff·、]+?)(?:来源|[）)]|$)', content_text)
+                if m and not author: author = m.group(1).strip()
+                if not m:
+                    m = re.search(r'（来源[：:][^）]*?编译[：:]\s*([\u4e00-\u9fff·、]+)', content_text)
+                if m and not author: author = m.group(1).strip()
                 if not m:
                     m = re.search(r'（([\u4e00-\u9fff·]{2,})）\s*$', content_text, re.MULTILINE)
+                if m and not author: author = m.group(1).strip()
                 if not m:
                     # 图片新闻署名：提取全部 图/XX 作者（可能有多个）
                     all_photo_authors = re.findall(r'(?:图|文|制图)[/:]\s*([\u4e00-\u9fff·]{2,4}?)(?=(?:文|图|制图)/|\n|$)', content_text, re.MULTILINE)
@@ -1134,24 +1307,6 @@ def main(date_str):
                         author = ' '.join(dict.fromkeys(
                             re.sub(r'^文', '', n).strip() for n in all_photo_authors if re.sub(r'^文', '', n).strip()
                         ))  # 去重保留顺序
-                if not author:
-                    # 尝试从正文开头提取作者
-                    m2 = re.search(r'(?:本报讯|本报)\s*(?:记者|通讯员|特约记者|特约通讯员)\s*([\u4e00-\u9fff\s]+?)(?:\s*报道|，)', content_text[:300])
-                    if not m2:
-                        m2 = re.search(r'(?:本报讯|本报)\s*(?:记者|通讯员|特约记者|特约通讯员)?\s*([\u4e00-\u9fff\s]+)', content_text[:200])
-                    if m2:
-                        author = re.sub(r'\s+', ' ', m2.group(1).strip())
-                        # 清除'记者''通讯员'等职称词（它们不是作者名的一部分）
-                        author = re.sub(r'\s*(记者|通讯员|特约记者|特约通讯员)\s*', ' ', author).strip()
-                        # 清理尾部夹杂的职称残余
-                        author = re.sub(r'(记者|通讯员|特约记者|特约通讯员|评论员)\s*$', '', author).strip()
-                        # 清理"来源"前缀
-                        author = re.sub(r'^来源[：:][^，。]*?编译[：:]\s*', '', author).strip()
-                        # 仅剩"评论员"等职称时置空
-                        if re.search(r'^(本报\s*)?(评论员|记者|通讯员|特约记者|特约通讯员)\s*$', author):
-                            author = ""
-                        # 去掉尾部混杂的正文开头词（"受台风""连日来"等）
-                        author = re.sub(r'\s+(受|连日来|近日|日前|随着|面对|今年|截至|目前|正值|汛期)\s*$', '', author).strip()
             # 最后兜底：正文首行单独成段的姓名
             if not author:
                 first_line = content_text.split("\n")[0].strip()
