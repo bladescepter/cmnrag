@@ -18,7 +18,7 @@ _PROV = {"郑州市":"河南省郑州市","哈尔滨市":"黑龙江省哈尔滨�
 def get_key():
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
     if os.path.exists(env_path):
-        with open(env_path) as f:
+        with open(env_path, encoding="utf-8") as f:
             for line in f:
                 if "OPENCODE_GO_API_KEY" in line:
                     return line.split("=",1)[1].strip()
@@ -45,7 +45,7 @@ def llm_region(title, body):
         if attempt:
             time.sleep(delay)
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=35)
+            r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=35)
         except Exception:
             continue
         if r.returncode == 0:
@@ -82,7 +82,7 @@ def llm_region(title, body):
             retry_prompt = prompt + f"\n上次输出“{result}”缺少省级行政区，请补全省级后重新输出完整路径。\n回答："
             retry_cmd[-2] = json.dumps({"model": "deepseek-chat", "messages": [{"role": "user", "content": retry_prompt}], "max_tokens": 500})
             try:
-                rr = subprocess.run(retry_cmd, capture_output=True, text=True, timeout=35)
+                rr = subprocess.run(retry_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=35)
                 if rr.returncode == 0:
                     rdata = json.loads(rr.stdout)
                     rcontent = rdata.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
