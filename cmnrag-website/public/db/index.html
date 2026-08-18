@@ -7,7 +7,7 @@
   <style>
     :root { --ink:#14213d; --muted:#667085; --line:#dce3ec; --blue:#155eef; --bg:#f6f8fb; --card:#fff; }
     *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif}
-    header{background:#123b72;color:white;padding:26px max(24px,calc((100vw - 1180px)/2));box-shadow:0 2px 8px #071b3930} h1{font-size:24px;margin:0 0 8px;font-weight:700} header p{margin:0;color:#d5e5ff;font-size:14px}
+    header{background:#123b72;color:white;padding:26px max(24px,calc((100vw - 1180px)/2));box-shadow:0 2px 8px #071b3930} h1{font-size:24px;margin:0 0 8px;font-weight:700} header p{margin:0;color:#d5e5ff;font-size:14px} .home-link{display:inline-block;margin-bottom:8px;color:#a8c7ff;text-decoration:none;font-size:13px}.home-link:hover{color:#fff}
     main{max-width:1180px;margin:28px auto;padding:0 24px}.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px;box-shadow:0 2px 8px #15233a0b;margin-bottom:20px}
     label{font-size:13px;font-weight:650;display:block;margin-bottom:6px;color:#344054}input,select{width:100%;border:1px solid #bfc9d8;border-radius:7px;background:#fff;padding:10px 11px;font:14px inherit;color:var(--ink)}.facet-field{position:relative}.facet-menu{position:absolute;z-index:10;top:100%;left:0;right:0;max-height:252px;overflow:auto;margin-top:4px;padding:4px;background:#fff;border:1px solid #bfc9d8;border-radius:7px;box-shadow:0 8px 16px #10182824;display:none}.facet-menu.open{display:block}.facet-option{display:flex;width:100%;align-items:flex-start;justify-content:space-between;gap:12px;border:0;border-radius:5px;background:transparent;color:var(--ink);padding:8px;text-align:left;font:13px inherit;cursor:pointer}.facet-option:hover{background:#f2f6fc}.facet-option-name{line-height:1.45}.facet-option-count{white-space:nowrap;color:var(--muted)}
     .search{display:grid;grid-template-columns:1fr 115px;gap:10px;margin-bottom:18px}.filters{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.span2{grid-column:span 2}.actions{display:flex;gap:10px;margin-top:18px}button{background:var(--blue);color:#fff;border:0;border-radius:7px;padding:10px 17px;font:14px inherit;font-weight:650;cursor:pointer}button.secondary{background:#fff;color:#155eef;border:1px solid #b7ccff}
@@ -18,7 +18,7 @@
   </style>
 </head>
 <body>
-<header><h1>中国气象报资料检索</h1><p>支持按关键词搜索，按日期、版面、主题、栏目、地区、作者精确筛选，基于筛选内容与AI对话。数据均来自公开报道，不涉及保密内容。</p></header>
+<header><a class="home-link" href="/">‹ 返回主页</a><h1>中国气象报资料检索</h1><p>支持按关键词搜索，按日期、版面、主题、栏目、地区、作者精确筛选，基于筛选内容与AI对话。覆盖 2026 年 6 月至 8 月公开稿件，不涉及保密内容。</p></header>
 <main>
   <section class="panel">
     <form id="search-form">
@@ -41,7 +41,7 @@
 <button class="ai-fab" id="open-ai" type="button">问 AI</button>
 <aside class="ai-drawer" id="ai-drawer" aria-label="AI 综合问答">
   <div class="chat-head"><h2>AI 综合问答</h2><div><button type="button" class="secondary chat-new" id="new-chat">新建对话</button><button class="close" aria-label="关闭" id="close-ai">×</button></div></div>
-  <div class="chat-scope" id="chat-scope">当前范围：全部 7 月稿件</div>
+  <div class="chat-scope" id="chat-scope">当前范围：全部稿件</div>
   <section class="chat-log" id="chat-log"><p class="chat-empty">输入问题开始问答。每一轮都会在当前筛选范围内重新检索原稿。</p></section>
   <p class="notice" id="ai-notice"></p>
   <div class="chat-input"><input id="ai-question" placeholder="例如：这些报道反映了哪些做法？" /><button type="button" id="ask-ai">发送</button></div>
@@ -60,7 +60,7 @@ async function loadFacetOptions(input,options,endpoint){try{const q=input.value.
 function chooseFacet(event,input,options){const option=event.target.closest('.facet-option');if(!option)return;input.value=option.dataset.value;options.classList.remove('open');}
 let conversation=[];let scopeKey='';
 function currentFilters(){return Object.fromEntries(new FormData(form).entries())}
-function scopeText(filters){const entries=Object.entries(filters).filter(([,v])=>String(v).trim());return entries.length?`当前范围：${entries.map(([k,v])=>({date_from:'起始日期',date_to:'结束日期',page:'版面',theme:'主题',column:'栏目',region:'地区',author:'作者',q:'关键词'}[k]||k)+`“${v}”`).join(' · ')}`:'当前范围：全部 7 月稿件'}
+function scopeText(filters){const entries=Object.entries(filters).filter(([,v])=>String(v).trim());return entries.length?`当前范围：${entries.map(([k,v])=>({date_from:'起始日期',date_to:'结束日期',page:'版面',theme:'主题',column:'栏目',region:'地区',author:'作者',q:'关键词'}[k]||k)+`“${v}”`).join(' · ')}`:'当前范围：全部稿件'}
 function appendMessage(role,content){const node=document.createElement('article');node.className=`chat-message ${role}`;node.textContent=content;chatLog.append(node);chatLog.scrollTop=chatLog.scrollHeight;return node}
 function resetConversation(message='输入问题开始问答。每一轮都会在当前筛选范围内重新检索原稿。'){conversation=[];chatLog.innerHTML=`<p class="chat-empty">${esc(message)}</p>`}
 function ensureScope(){const filters=currentFilters(),key=JSON.stringify(filters);chatScope.textContent=scopeText(filters);if(scopeKey&&scopeKey!==key)resetConversation('检索范围已变更，已开启新对话。');scopeKey=key;return filters}

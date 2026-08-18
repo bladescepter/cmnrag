@@ -2,7 +2,7 @@
 
 《中国气象报》档案检索系统：**结构化稿件资料库 + 全文检索网站 + 基于 RAG 的 AI 综合问答**。
 
-已清洗的报纸稿件以 Markdown + YAML frontmatter 形式入库，经 Cloudflare Workers 检索服务对外提供，线上入口：<https://cfzx.xiyuan.wiki>
+已清洗的报纸稿件以 Markdown + YAML frontmatter 形式入库，经 Cloudflare Workers 检索服务对外提供。线上入口：主页 <https://cfzx.xiyuan.wiki>，稿件资料库 <https://cfzx.xiyuan.wiki/db>
 
 ## 基本功能
 
@@ -31,7 +31,7 @@
 
 ## 数据范围与规范
 
-- 当前已入库：**2026 年 7 月，528 篇稿件**（一版 143 / 二版 170 / 三版 121 / 四版 94）
+- 当前已入库：**2026 年 6 月至 8 月，共 1248 篇稿件**（202606 计 365 篇 / 202607 计 556 篇 / 202608 计 327 篇）
 - 数据真源：仓库内 `cmnrag/YYYYMM/YYYYMMDD/版面/序号-标题.md`，一篇稿件一个文件
 - 字段语义（`column` 栏目、`region` 主体地区、`theme` 版面主题等边界）见 [`cmnrag/FRONTMATTER.md`](cmnrag/FRONTMATTER.md)，**这是检索字段的权威定义**
 - 导入：`cmnrag-website/scripts/` 下两个幂等脚本（见下）；数据未入库的新刊期可用其增量导入
@@ -60,8 +60,8 @@ npm test                    # 单元测试
 # 全文与元数据入 D1（默认数据根为仓库内 cmnrag/，可用参数覆盖）
 npx tsx scripts/import-archive.ts
 
-# 生成向量入 Vectorize（正文分块 + bge-m3 嵌入）
-npx tsx scripts/ingest-july-vectors.ts
+# 生成向量入 Vectorize（正文分块 + bge-m3 嵌入；默认自动发现全部月份目录，可用 CMNRAG_MONTHS=202606 限定）
+npx tsx scripts/ingest-vectors.ts
 ```
 
 ## 技术栈

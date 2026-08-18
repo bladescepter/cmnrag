@@ -3,11 +3,13 @@ import { buildArticleQuery } from "./archive/search";
 import { parseSearchRequest } from "./archive/request";
 import { parsePagination } from "./archive/pagination";
 import { buildAnswerArticleIdQuery, buildVectorArticleFilter } from "./ai/answerFilters";
-import { buildRagPrompt, uniqueSourcesByArticle, type ConversationTurn, type RagSource } from "./ai/rag";
+import { buildRagSystemPrompt, buildRagUserPrompt, uniqueSourcesByArticle, type ConversationTurn, type RagSource } from "./ai/rag";
 import { chooseEvidenceCount, rerankSources } from "./ai/rerank";
 
 const EMBEDDING_MODEL = "@cf/baai/bge-m3";
-const GENERATION_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8-fast";
+// 70B fp8 指令遵循与稳定性远优于 8B（实测 8B 会被证据中科普设问句劫持、复读无关内容）；
+// 代价是单次生成更贵、消耗每日 AI 额度更快，若额度紧张可改回 @cf/meta/llama-3.1-8b-instruct-fp8-fast
+const GENERATION_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 const json = (body: unknown, status = 200) =>
 	new Response(JSON.stringify(body), {
@@ -119,11 +121,20 @@ async function answerQuestion(request: Request, env: Env) {
 	const eligibleIds = eligible.results.map((row) => row.article_id);
 	if (!eligibleIds.length) return json({ answer: "当前筛选条件下没有符合的稿件。", sources: [] });
 	try {
-		const embedding = await env.AI.run(EMBEDDING_MODEL, { text: [question] }) as EmbeddingResponse;
+		let embedding: EmbeddingResponse;
+		try {
+			embedding = await env.AI.run(EMBEDDING_MODEL, { text: [question] }) as EmbeddingResponse;
+		} catch (first) {
+			// 上游嵌入模型偶发 500（属暂时性，重试可成功）；额度类错误不重试直接抛出
+			const message = first instanceof Error ? first.message : "";
+			if (/quota|neuron|limit|429/i.test(message)) throw first;
+			embedding = await env.AI.run(EMBEDDING_MODEL, { text: [question] }) as EmbeddingResponse;
+		}
 		const queryVector = embedding.data?.[0];
 		if (!queryVector || queryVector.length !== 1024) throw new Error("embedding_unavailable");
 		const vectorFilter = buildVectorArticleFilter(eligibleIds);
-		const topK = vectorFilter ? 20 : 50;
+		// 全库无筛选时索引已有数千向量，提高召回避免漏检；带筛选时 20 已足够
+		const topK = vectorFilter ? 20 : 100;
 		const matches = await env.VECTORIZE.query(queryVector, { topK, returnMetadata: topK > 50 ? "indexed" : "all", ...(vectorFilter ? { filter: vectorFilter } : {}) });
 		if (!matches.matches.length) return json({ answer: "现有档案未提供足够依据。", sources: [] });
 		const ids = matches.matches.map((match) => match.id);
@@ -140,9 +151,13 @@ async function answerQuestion(request: Request, env: Env) {
 		const evidenceCount = chooseEvidenceCount(rankedSources.length);
 		const sources = rankedSources.slice(0, evidenceCount);
 		if (!sources.length) return json({ answer: "现有档案未提供足够依据。", sources: [] });
-		const prompt = buildRagPrompt(question, sources.map((source) => ({ id: source.chunk_id, title: source.title, date: source.date, page: source.page, content: source.content })), history);
-		const generated = await env.AI.run(GENERATION_MODEL, { messages: [{ role: "user", content: prompt }], max_tokens: 700, temperature: 0.2 }) as { response?: string; choices?: Array<{ message?: { content?: string } }> };
-		const answer = generated.response ?? generated.choices?.[0]?.message?.content ?? "现有档案未提供足够依据。";
+		const prompt = buildRagSystemPrompt();
+		const userPrompt = buildRagUserPrompt(question, sources.map((source) => ({ id: source.chunk_id, title: source.title, date: source.date, page: source.page, content: source.content })), history);
+		const generated = await env.AI.run(GENERATION_MODEL, { messages: [{ role: "system", content: prompt }, { role: "user", content: userPrompt }], max_tokens: 700, temperature: 0.2 }) as { response?: string; choices?: Array<{ message?: { content?: string } }> };
+		// 兜底：去掉模型偶尔带出的“根据档案证据…”开场白（内容层面的劫持由 70B + 防劫持提示词解决）
+		const answer = (generated.response ?? generated.choices?.[0]?.message?.content ?? "现有档案未提供足够依据。")
+			.replace(/^根据档案证据，回答问题[：:]\s*/u, "")
+			.replace(/^根据档案证据，\s*/u, "");
 		return json({ answer, sources: sources.map((source, index) => ({ number: index + 1, article_id: source.article_id, source_path: source.source_path, title: source.title, date: source.date, page: source.page, author: parseList(source.author), region: parseList(source.region), excerpt: source.content.slice(0, 500) })) });
 	} catch (caught) {
 		const message = caught instanceof Error ? caught.message : "ai_unavailable";

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>采访中心工具集</title>
+  <style>
+    :root { --ink:#14213d; --muted:#667085; --line:#dce3ec; --blue:#155eef; --bg:#f6f8fb; --card:#fff; }
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif}
+    header{background:#123b72;color:white;padding:42px max(24px,calc((100vw - 1180px)/2));box-shadow:0 2px 8px #071b3930} h1{font-size:26px;margin:0 0 10px;font-weight:700} header p{margin:0;color:#d5e5ff;font-size:14px;line-height:1.7}
+    main{max-width:1180px;margin:30px auto;padding:0 24px}
+    .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+    .card{display:block;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px;text-decoration:none;color:var(--ink);box-shadow:0 2px 8px #15233a0b;transition:border-color .15s,box-shadow .15s}
+    .card:hover{border-color:#84adff;box-shadow:0 6px 18px #155eef18}
+    .card-title{font-size:17px;font-weight:700;display:flex;align-items:center;gap:9px;margin-bottom:9px}
+    .card p{margin:0 0 12px;font-size:13.5px;color:var(--muted);line-height:1.7}
+    .card-meta{font-size:12.5px;color:#98a2b3}
+    .badge{border-radius:99px;padding:2px 9px;font-size:12px;font-weight:650;white-space:nowrap}
+    .badge.ok{background:#eafaf1;color:#16794b}
+    .badge.wip{background:#f2f4f7;color:#98a2b3}
+    footer{max-width:1180px;margin:40px auto 30px;padding:0 24px;color:#98a2b3;font-size:12.5px;text-align:center}
+    @media(max-width:860px){.cards{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<header><h1>采访中心工具集</h1><p>当前策划了报纸资料库、校对系统、排班工具三项。</p></header>
+<main>
+  <section class="cards">
+    <a class="card" href="/db">
+      <div class="card-title">报纸资料库<span class="badge ok">可用</span></div>
+      <p>结构化检索 · 全文阅读 · AI 综合问答</p>
+      <div class="card-meta">数据均来自公开报道，不涉及保密内容。</div>
+    </a>
+    <a class="card" href="/proofread">
+      <div class="card-title">校对系统<span class="badge wip">建设中</span></div>
+      <p>根据宣传报道口径及常见错误进行校对。</p>
+    </a>
+    <a class="card" href="/schedule">
+      <div class="card-title">排班系统<span class="badge wip">建设中</span></div>
+      <p>自动按周期生成具有随机性的排班。</p>
+    </a>
+  </section>
+</main>
+<footer>采访中心工具集 · 内部工具</footer>
+</body>
+</html>

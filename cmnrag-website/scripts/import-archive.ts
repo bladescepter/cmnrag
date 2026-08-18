@@ -8,6 +8,8 @@ import { parseArticle } from "../src/archive/parseArticle";
 const sourceRoot = process.argv[2] ?? join(__dirname, "..", "..", "cmnrag");
 // 月份过滤：CMNRAG_MONTHS=202607,202608 时只导这些月份；留空则全量
 const monthSet = new Set((process.env.CMNRAG_MONTHS ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+// 铁律：6 月为测试数据，不上线。默认全量导入时排除 202606；显式 CMNRAG_MONTHS=202606 仍可强制导入（本地试验）。
+const TEST_MONTHS = new Set(["202606"]);
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "6af7ecfe8e736f150bae5089463f9293";
 const token = process.env.CLOUDFLARE_RAG_API_TOKEN;
 const databaseId = "f0fbe6ce-5e87-4885-9ab6-7e948ec13c4d";
@@ -18,8 +20,11 @@ async function walk(directory: string, depth = 0): Promise<string[]> {
 	const nested = await Promise.all(entries.map((entry) => {
 		const path = join(directory, entry.name);
 		if (entry.isDirectory()) {
-			// depth 0 的子目录是 YYYYMM；限定月份时跳过集合外的月份目录
-			if (depth === 0 && monthSet.size > 0 && !monthSet.has(entry.name)) return [];
+			// depth 0 的子目录是 YYYYMM；限定月份时跳过集合外的月份目录，未限定时跳过测试月份
+			if (depth === 0) {
+				if (monthSet.size > 0 && !monthSet.has(entry.name)) return [];
+				if (monthSet.size === 0 && TEST_MONTHS.has(entry.name)) return [];
+			}
 			return walk(path, depth + 1);
 		}
 		return entry.name.endsWith(".md") && /^2026\d{4}$/.test(directory.split(/[\\/]/).at(-2) ?? "") ? [path] : [];

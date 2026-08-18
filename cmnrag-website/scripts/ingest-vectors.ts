@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { chunkArticle } from "../src/ingest/chunkArticle";
 import { buildEmbeddingText, discoverMonthFiles } from "../src/ingest/julyArchive";
@@ -99,9 +99,21 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(source_path) DO UPDATE SET article_id=excluded.article_id, source_sha256=excluded.source_sha256, type=excluded.type, source=excluded.source, title=excluded.title, subtitle=excluded.subtitle, author=excluded.author, published_date=excluded.published_date, page=excluded.page, theme=excluded.theme, edition_type=excluded.edition_type, headline=excluded.headline, image=excluded.image, column_name=excluded.column_name, region=excluded.region, content=excluded.content, imported_at=CURRENT_TIMESTAMP`, [article.articleId, article.sourcePath, article.sourceSha256, article.type, article.source, article.title, article.subtitle, JSON.stringify(article.author), article.date, article.page, article.theme, article.editionType, article.headline ? 1 : 0, article.image ? 1 : 0, JSON.stringify(article.columnName), JSON.stringify(article.region), article.content]);
 }
 
+// 铁律：6 月为测试数据，不上线（只上线 7、8 月及后续正式数据）。
+// 自动发现月份时排除 202606；显式指定 CMNRAG_MONTHS=202606 仍可强制导入（用于本地试验）。
+const TEST_MONTHS = new Set(["202606"]);
+
+async function discoverAllMonths(root: string): Promise<string[]> {
+	const entries = await readdir(root, { withFileTypes: true });
+	return entries.filter((entry) => entry.isDirectory() && /^\d{6}$/.test(entry.name) && !TEST_MONTHS.has(entry.name)).map((entry) => entry.name).sort();
+}
+
 async function main() {
-	// 月份列表：CMNRAG_MONTHS=202607,202608 或默认 7、8 月
-	const months = (process.env.CMNRAG_MONTHS ?? "202607,202608").split(",").map((s) => s.trim()).filter(Boolean);
+	// 月份列表：CMNRAG_MONTHS=202606,202607 限定；留空则自动发现数据根下全部 YYYYMM 月份目录（避免漏月）
+	const months = process.env.CMNRAG_MONTHS
+		? process.env.CMNRAG_MONTHS.split(",").map((s) => s.trim()).filter(Boolean)
+		: await discoverAllMonths(sourceRoot);
+	if (!months.length) throw new Error("no month directories found under " + sourceRoot);
 	const files = await discoverMonthFiles(sourceRoot, months);
 	const articles = await Promise.all(files.map(async (file) => parseArticle(await readFile(file, "utf8"), relative(sourceRoot, file).split(sep).join("/"))));
 	const runId = randomUUID();
