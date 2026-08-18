@@ -143,6 +143,9 @@ def evaluate(date_str, bc, results):
 
 
 def main():
+    if hasattr(sys.stdout, "buffer") and sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+        import io as _io
+        sys.stdout = _io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     if len(sys.argv) < 2:
         print("用法: python3 column_detect.py YYYYMMDD [BC]")
         sys.exit(1)
@@ -154,11 +157,11 @@ def main():
         page = PAGE_LABELS.get(bc, bc)
         data = get_page_data(date_str, bc)
         if not data:
-            print(f"⚠ 无法获取 {page} 数据")
+            print(f"[!] 无法获取 {page} 数据")
             continue
         img_path = download_image(data["jppath"], date_str, bc)
         if not img_path:
-            print(f"⚠ 无法下载 {page} 图片")
+            print(f"[!] 无法下载 {page} 图片")
             continue
         print(f"\n{date_str} {page}: {len(data['articles'])} 篇文章")
 
@@ -174,7 +177,7 @@ def main():
             # 审核完成：删除版面图（视觉结果已存 _vision.json，图可随时从 epaper 重新下载）
             if img_path and os.path.exists(img_path):
                 os.remove(img_path)
-                print(f"  ✔ 已删除版面图 {os.path.basename(img_path)}")
+                print(f"  [ok] 已删除版面图 {os.path.basename(img_path)}")
         else:
             run_vision(img_path, date_str, bc, page)
 

@@ -4,7 +4,11 @@
 import os, re, json, subprocess, sys, time
 
 OUT_BASE = os.environ.get("CMNRAG_DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cmnrag"))
-API_BASE = "https://opencode.ai/zen/go/v1/chat/completions"
+# 主通道：Nous Portal（NOUS_API_KEY，存于 ~/.pi/agent/.env）；回退：opencode.ai（OPENCODE_GO_API_KEY，存于项目 .env）
+API_BASE = "https://inference-api.nousresearch.com/v1/chat/completions"
+MODEL = "deepseek/deepseek-v4-flash-0731"
+FALLBACK_API_BASE = "https://opencode.ai/zen/go/v1/chat/completions"
+FALLBACK_MODEL = "deepseek-v4-flash"
 
 _PROV = {"郑州市":"河南省郑州市","哈尔滨市":"黑龙江省哈尔滨市","长春市":"吉林省长春市","沈阳市":"辽宁省沈阳市",
          "济南市":"山东省济南市","南京市":"江苏省南京市","杭州市":"浙江省杭州市","福州市":"福建省福州市",
@@ -15,13 +19,29 @@ _PROV = {"郑州市":"河南省郑州市","哈尔滨市":"黑龙江省哈尔滨�
          "银川市":"宁夏回族自治区银川市","乌鲁木齐市":"新疆维吾尔自治区乌鲁木齐市","拉萨市":"西藏自治区拉萨市",
          "呼和浩特市":"内蒙古自治区呼和浩特市","北京市":"北京市","上海市":"上海市","天津市":"天津市","重庆市":"重庆市"}
 
+def _load_env(path):
+    if not path or not os.path.exists(path):
+        return {}
+    env = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            env[k.strip()] = v.strip().strip('"').strip("'")
+    return env
+
 def get_key():
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
-    if os.path.exists(env_path):
-        with open(env_path, encoding="utf-8") as f:
-            for line in f:
-                if "OPENCODE_GO_API_KEY" in line:
-                    return line.split("=",1)[1].strip()
+    """优先 NOUS_API_KEY（主通道），回退 OPENCODE_GO_API_KEY（备用通道）"""
+    home_env = _load_env(os.path.join(os.path.expanduser("~"), ".pi", "agent", ".env"))
+    proj_env = _load_env(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+    if home_env.get("NOUS_API_KEY"):
+        return home_env["NOUS_API_KEY"]
+    if os.environ.get("NOUS_API_KEY"):
+        return os.environ["NOUS_API_KEY"]
+    if proj_env.get("OPENCODE_GO_API_KEY"):
+        return proj_env["OPENCODE_GO_API_KEY"]
     return os.environ.get("OPENCODE_GO_API_KEY")
 
 def llm_region(title, body):
@@ -34,12 +54,15 @@ def llm_region(title, body):
         "-H", f"Authorization: Bearer {key}",
         "-H", "Content-Type: application/json",
         "-d", json.dumps({
-            "model": "deepseek-v4-flash",
+            "model": MODEL,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 500,
         }),
         API_BASE,
     ]
+    return _curl_region(cmd, prompt)
+
+def _curl_region(cmd, prompt):
     r = None
     for attempt, delay in enumerate([0, 2, 5]):
         if attempt:
@@ -63,7 +86,7 @@ def llm_region(title, body):
         else:
             result = ""
         if not result:
-            raw = msg.get("reasoning_content", "")
+            raw = msg.get("reasoning_content") or msg.get("reasoning") or ""
             for pat in [r"答[：:]\s*([\u4e00-\u9fff]+(?:省|自治区|市|区|县|自治州))"]:
                 m2 = re.search(pat, raw)
                 if m2:
@@ -80,7 +103,7 @@ def llm_region(title, body):
         if result and not province_re.match(result):
             retry_cmd = list(cmd)
             retry_prompt = prompt + f"\n上次输出“{result}”缺少省级行政区，请补全省级后重新输出完整路径。\n回答："
-            retry_cmd[-2] = json.dumps({"model": "deepseek-chat", "messages": [{"role": "user", "content": retry_prompt}], "max_tokens": 500})
+            retry_cmd[-2] = json.dumps({"model": MODEL, "messages": [{"role": "user", "content": retry_prompt}], "max_tokens": 500})
             try:
                 rr = subprocess.run(retry_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=35)
                 if rr.returncode == 0:
