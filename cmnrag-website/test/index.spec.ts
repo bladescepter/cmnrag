@@ -8,9 +8,8 @@ describe("中国气象报检索 Worker", () => {
 		expect(await response.json()).toEqual({ status: "ok" });
 	});
 
-	it("does not expose a query result before the archive is initialized", async () => {
+	it("requires authentication for API queries", async () => {
 		const response = await worker.fetch(new Request("https://example.com/api/search?q=河北"), {} as Env, {} as ExecutionContext);
-		expect(response.status).toBe(503);
-		expect(await response.json()).toEqual({ error: "archive_not_initialized" });
+		expect(response.status).toBe(401);
 	});
 });

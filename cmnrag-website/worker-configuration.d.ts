@@ -11,9 +11,13 @@ declare namespace Cloudflare {
 	interface GlobalProps {
 		mainModule: typeof import("./src/index");
 	}
-	interface Env extends __BaseEnv_Env {}
+	interface Env extends __BaseEnv_Env {
+		ADMIN_INIT_SECRET?: string;
+	}
 }
-interface Env extends __BaseEnv_Env {}
+interface Env extends __BaseEnv_Env {
+	ADMIN_INIT_SECRET?: string;
+}
 
 // Begin runtime types
 /*! *****************************************************************************

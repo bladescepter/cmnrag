@@ -4,6 +4,15 @@ import { parseSearchRequest } from "./archive/request";
 import { parsePagination } from "./archive/pagination";
 import { buildAnswerArticleIdQuery, buildVectorArticleFilter } from "./ai/answerFilters";
 import { buildRagSystemPrompt, buildRagUserPrompt, uniqueSourcesByArticle, type ConversationTurn, type RagSource } from "./ai/rag";
+import {
+	handleAdminAction,
+	handleAdminUsers,
+	handleLogin,
+	handleLogout,
+	handleMe,
+	handleRegister,
+	requireUser,
+} from "./auth";
 import { chooseEvidenceCount, rerankSources } from "./ai/rerank";
 
 const EMBEDDING_MODEL = "@cf/baai/bge-m3";
@@ -172,6 +181,23 @@ export default {
 		const url = new URL(request.url);
 		try {
 			if (url.pathname === "/health") return json({ status: "ok" });
+			// 公开认证接口：注册 / 登录
+			if (url.pathname === "/api/auth/register" && request.method === "POST") return handleRegister(request, env);
+			if (url.pathname === "/api/auth/login" && request.method === "POST") return handleLogin(request, env);
+			// 其余 /api/* 需登录；/api/admin/* 需 admin 角色
+			const user = await requireUser(request, env);
+			if (url.pathname === "/api/auth/logout" && request.method === "POST") return handleLogout(request, env);
+			if (url.pathname === "/api/auth/me") return handleMe(user);
+			if (url.pathname === "/api/admin/users" && request.method === "GET") {
+				if (!user || user.role !== "admin") return error("forbidden", 403);
+				return handleAdminUsers(url, env);
+			}
+			const adminMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/(approve|reject)$/);
+			if (adminMatch && request.method === "POST") {
+				if (!user || user.role !== "admin") return error("forbidden", 403);
+				return handleAdminAction(request, env, adminMatch[1], adminMatch[2] as "approve" | "reject");
+			}
+			if (!user) return error("unauthorized", 401);
 			if (url.pathname === "/api/columns") return listFacet(url, env, "column_name");
 			if (url.pathname === "/api/themes") return listFacet(url, env, "theme");
 			if (url.pathname === "/api/answer" && request.method === "POST") return answerQuestion(request, env);

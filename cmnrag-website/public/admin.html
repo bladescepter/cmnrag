@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>用户审批 · 采访中心工具集</title>
+  <style>
+    :root { --ink:#14213d; --muted:#667085; --line:#dce3ec; --blue:#155eef; --bg:#f6f8fb; --card:#fff; }
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif}
+    header{background:#123b72;color:white;padding:26px max(24px,calc((100vw - 1180px)/2))}
+    h1{font-size:22px;margin:0 0 6px} header p{margin:0;color:#d5e5ff;font-size:13.5px}
+    main{max-width:1180px;margin:26px auto;padding:0 24px}
+    .tabs{display:flex;gap:10px;margin-bottom:16px}
+    .tab{padding:7px 16px;border-radius:99px;border:1px solid var(--line);background:var(--card);cursor:pointer;font-size:13.5px;color:var(--muted)}
+    .tab.active{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+    .row{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:12px}
+    .row-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+    .un{font-weight:700;font-size:15px}
+    .role{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:1px 8px}
+    .role.admin{color:#16794b;border-color:#9fd6b8;background:#eafaf1}
+    .meta{font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.7}
+    .btns{margin-top:12px;display:flex;gap:10px}
+    .btn{padding:6px 18px;border:none;border-radius:8px;font-size:13.5px;cursor:pointer}
+    .btn.ok{background:#16a34a;color:#fff} .btn.no{background:#e5484d;color:#fff}
+    .empty{color:var(--muted);font-size:14px;padding:30px 0;text-align:center}
+    .reject-reason{font-size:12.5px;color:#c5283d;margin-top:6px}
+    .deny{color:#c5283d;margin:40px auto;text-align:center;font-size:15px}
+    .link{display:inline-block;margin-top:16px;color:var(--blue);text-decoration:none;font-size:13.5px}
+  </style>
+</head>
+<body>
+<header><h1>用户审批</h1><p>审批注册申请，通过后可访问内部工具。</p></header>
+<main id="main"></main>
+<script>
+  const main = document.getElementById("main");
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+
+  async function api(path, opts) {
+    const res = await fetch(path, opts);
+    return { status: res.status, data: await res.json().catch(() => ({})) };
+  }
+
+  function renderTabs(active) {
+    const tabs = document.createElement("div");
+    tabs.className = "tabs";
+    for (const [key, label] of [["pending", "待审批"], ["approved", "已通过"], ["rejected", "已拒绝"]]) {
+      const t = document.createElement("div");
+      t.className = "tab" + (active === key ? " active" : "");
+      t.textContent = label;
+      t.addEventListener("click", () => load(key));
+      tabs.appendChild(t);
+    }
+    return tabs;
+  }
+
+  function renderRows(items, status) {
+    if (!items.length) return div("empty", status === "pending" ? "暂无待审批申请" : "暂无记录");
+    const wrap = document.createElement("div");
+    for (const u of items) {
+      const row = document.createElement("div");
+      row.className = "row";
+      const top = document.createElement("div");
+      top.className = "row-top";
+      const un = document.createElement("span");
+      un.className = "un";
+      un.textContent = u.username;
+      top.appendChild(un);
+      if (u.role === "admin") {
+        const r = document.createElement("span");
+        r.className = "role admin";
+        r.textContent = "管理员";
+        top.appendChild(r);
+      }
+      row.appendChild(top);
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const parts = [u.display_name && "显示名：" + u.display_name, u.email && "邮箱：" + u.email, u.note && "备注：" + u.note, "申请于 " + (u.created_at || "").replace("T", " ").slice(0, 19)];
+      meta.textContent = parts.filter(Boolean).join(" · ");
+      row.appendChild(meta);
+      if (u.rejected_reason) {
+        const rr = document.createElement("div");
+        rr.className = "reject-reason";
+        rr.textContent = "拒绝原因：" + u.rejected_reason;
+        row.appendChild(rr);
+      }
+      if (u.status === "pending") {
+        const btns = document.createElement("div");
+        btns.className = "btns";
+        const ok = document.createElement("button");
+        ok.className = "btn ok";
+        ok.textContent = "通过";
+        ok.addEventListener("click", () => act(u.id, "approve", ""));
+        const no = document.createElement("button");
+        no.className = "btn no";
+        no.textContent = "拒绝";
+        no.addEventListener("click", async () => {
+          const reason = window.prompt("拒绝原因（可选）", "");
+          if (reason === null) return;
+          await act(u.id, "reject", reason);
+        });
+        btns.appendChild(ok);
+        btns.appendChild(no);
+        row.appendChild(btns);
+      }
+      wrap.appendChild(row);
+    }
+    return wrap;
+  }
+
+  const div = (cls, text) => {
+    const d = document.createElement("div");
+    d.className = cls;
+    d.textContent = text;
+    return d;
+  };
+
+  async function act(id, action, reason) {
+    const res = await api("/api/admin/users/" + id + "/" + action, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason }) });
+    if (res.status === 200) load("pending");
+    else alert(res.data.error || "操作失败");
+  }
+
+  async function load(status) {
+    main.textContent = "";
+    const tabs = renderTabs(status);
+    main.appendChild(tabs);
+    const me = await api("/api/auth/me");
+    if (me.status !== 200) { location.href = "/login.html?next=" + encodeURIComponent("/admin.html"); return; }
+    if (me.data.user.role !== "admin") {
+      main.appendChild(div("deny", "无权访问：仅管理员可审批"));
+      const back = document.createElement("a");
+      back.className = "link";
+      back.href = "/";
+      back.textContent = "返回首页";
+      main.appendChild(back);
+      return;
+    }
+    const res = await api("/api/admin/users?status=" + status);
+    if (res.status !== 200) { main.appendChild(div("empty", res.data.error || "加载失败")); return; }
+    main.appendChild(renderRows(res.data.items || [], status));
+  }
+
+  load("pending");
+</script>
+</body>
+</html>

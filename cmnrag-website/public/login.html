@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>登录 · 采访中心工具集</title>
+  <style>
+    :root { --ink:#14213d; --muted:#667085; --line:#dce3ec; --blue:#155eef; --bg:#f6f8fb; --card:#fff; }
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center}
+    .card{width:380px;max-width:92vw;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:30px 28px;box-shadow:0 8px 28px #15233a10}
+    h1{font-size:20px;margin:0 0 4px} .sub{color:var(--muted);font-size:13px;margin:0 0 20px}
+    .tabs{display:flex;gap:0;border-bottom:1px solid var(--line);margin-bottom:18px}
+    .tab{flex:1;text-align:center;padding:9px 0;cursor:pointer;font-size:14px;color:var(--muted);border-bottom:2px solid transparent}
+    .tab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:650}
+    label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px}
+    input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;outline:none}
+    input:focus{border-color:#84adff;box-shadow:0 0 0 3px #155eef14}
+    button{width:100%;margin-top:20px;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}
+    button:hover{background:#124ed0}
+    .msg{margin-top:14px;font-size:13px;line-height:1.6;min-height:18px}
+    .msg.ok{color:#16794b} .msg.err{color:#c5283d}
+    .hint{font-size:12px;color:#98a2b3;margin-top:16px;line-height:1.7}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>采访中心工具集</h1>
+    <p class="sub">内部工具，需注册并经管理员审批后使用</p>
+    <div class="tabs">
+      <div class="tab active" data-tab="login">登录</div>
+      <div class="tab" data-tab="register">注册</div>
+    </div>
+
+    <form id="login-form">
+      <label>用户名</label>
+      <input id="login-username" autocomplete="username" required />
+      <label>密码</label>
+      <input id="login-password" type="password" autocomplete="current-password" required />
+      <button type="submit">登 录</button>
+    </form>
+
+    <form id="register-form" hidden>
+      <label>用户名（2-24 位中文/字母/数字/下划线）</label>
+      <input id="reg-username" autocomplete="username" required />
+      <label>显示名</label>
+      <input id="reg-display" placeholder="可选" />
+      <label>邮箱</label>
+      <input id="reg-email" type="email" placeholder="可选" />
+      <label>备注（单位 / 用途）</label>
+      <input id="reg-note" placeholder="可选" />
+      <label>密码（至少 8 位）</label>
+      <input id="reg-password" type="password" autocomplete="new-password" required />
+      <label>确认密码</label>
+      <input id="reg-password2" type="password" autocomplete="new-password" required />
+      <label>管理员初始化密钥（可选，仅第一个管理员填写）</label>
+      <input id="reg-init" type="password" autocomplete="off" />
+      <button type="submit">提交注册申请</button>
+    </form>
+
+    <div id="msg" class="msg"></div>
+    <p class="hint">注册后需管理员在后台审批通过，方可登录使用。</p>
+  </div>
+
+  <script>
+    const msg = document.getElementById("msg");
+    const show = (text, ok) => { msg.textContent = text; msg.className = "msg " + (ok ? "ok" : "err"); };
+
+    const next = new URLSearchParams(location.search).get("next") || "/";
+    const redirect = () => { location.href = next; };
+
+    // 已登录则直接进入
+    fetch("/api/auth/me", { credentials: "same-origin" }).then(r => { if (r.status === 200) redirect(); }).catch(() => {});
+
+    document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      document.getElementById("login-form").hidden = tab.dataset.tab !== "login";
+      document.getElementById("register-form").hidden = tab.dataset.tab !== "register";
+      show("", true);
+    }));
+
+    document.getElementById("login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      show("登录中…", true);
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: document.getElementById("login-username").value.trim(), password: document.getElementById("login-password").value }),
+      });
+      const data = await res.json();
+      if (res.status === 200) { show("登录成功，正在进入…", true); setTimeout(redirect, 400); }
+      else show(data.error || "登录失败", false);
+    });
+
+    document.getElementById("register-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const pwd = document.getElementById("reg-password").value;
+      if (pwd !== document.getElementById("reg-password2").value) return show("两次密码不一致", false);
+      show("提交中…", true);
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          username: document.getElementById("reg-username").value.trim(),
+          display_name: document.getElementById("reg-display").value.trim(),
+          email: document.getElementById("reg-email").value.trim(),
+          note: document.getElementById("reg-note").value.trim(),
+          password: pwd,
+          init_code: document.getElementById("reg-init").value.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.status === 200) {
+        show(data.role === "admin" ? "管理员注册成功，正在进入…" : "注册申请已提交，请等待管理员审批通过后登录。", true);
+        if (data.role === "admin") setTimeout(redirect, 600);
+      } else show(data.error || "注册失败", false);
+    });
+  </script>
+</body>
+</html>
