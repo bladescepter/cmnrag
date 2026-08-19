@@ -647,6 +647,10 @@ KNOWN_AUTHORS = {
     "郭春燕",
     "陈振林",
     "鞠晓慧",
+    # 20260819 新增（审核确认）
+    "付叶贞", "余佳", "余昌波", "冀涛", "周秉荣", "孙怀珍", "张冰清", "张炎",
+    "曹丽霞", "曹晓云", "曹颖", "杨亦萍", "武雅丽", "焦瑛", "王凌梓", "秦采薇",
+    "袁帅", "贾亚飞", "郭亚琦", "金瑛", "陈梅", "齐红",
 
 }
 
@@ -943,6 +947,9 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
         if not (all(2 <= len(s) <= 4 for s in _segs) and all(s in KNOWN_AUTHORS or s[0] in SURNAMES for s in _segs)):
             _lead = ""
     if _lead:
+        # docAuthor 胶连名先分词，避免与正文署名合并时重复（如“冀涛段宸宇贾亚飞”+正文同名）
+        if author and len(author.replace(' ', '')) > 4:
+            author = split_authors(author)
         _names = author.split() if author else []
         for _n in _lead.split():
             if _n and _n not in _names:
@@ -1314,11 +1321,17 @@ def main(date_str):
                 _lead = re.sub(r'\s+(受|连日来|近日|日前|随着|面对|今年|今年第|今年以来|截至|目前|正值|汛期|编者按|最近|超长|连日|眼下|当前|进入)\s*$', '', _lead).strip()
             _lead = re.sub(r'\s+第\d+号?\s*$', '', _lead).strip()
             if _lead:
+                # 胶连多名（无空格，如“王彬乔斌曹晓云周秉荣”）先用锚点法分词再校验（与单篇路径对齐）
+                if len(_lead.replace(' ', '')) > 4:
+                    _lead = split_authors(_lead)
                 # 人名校验：每段须为 2-4 字且首字是常见姓氏或已入库；否则 LEAD 不可靠，宁缺勿错（走文末/人工）
                 _segs = _lead.split()
                 if not (all(2 <= len(s) <= 4 for s in _segs) and all(s in KNOWN_AUTHORS or s[0] in SURNAMES for s in _segs)):
                     _lead = ""
             if _lead:
+                # docAuthor 胶连名先分词，避免与正文署名合并时重复（如“冀涛段宸宇贾亚飞”+正文同名）
+                if author and len(author.replace(' ', '')) > 4:
+                    author = split_authors(author)
                 _names = author.split() if author else []
                 for _n in _lead.split():
                     if _n and _n not in _names:
