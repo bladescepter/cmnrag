@@ -20,6 +20,20 @@
     .badge.wip{background:#f2f4f7;color:#98a2b3}
     footer{max-width:1180px;margin:40px auto 30px;padding:0 24px;color:#98a2b3;font-size:12.5px;text-align:center}
     @media(max-width:860px){.cards{grid-template-columns:1fr}}
+    /* 顶部导航栏（静态内联；auth.js 同款兜底）*/
+    #auth-bar{background:#0d2b52;color:#d5e5ff;font-size:13.5px;box-shadow:0 2px 8px #071b3930;position:sticky;top:0;z-index:40}
+    #auth-bar .auth-bar-inner{max-width:1180px;margin:0 auto;padding:10px 24px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px}
+    #auth-bar .auth-left{justify-self:start}
+    #auth-bar .auth-nav{justify-self:center;display:flex;gap:6px;align-items:center}
+    #auth-bar .auth-right{justify-self:end;display:flex;gap:14px;align-items:center}
+    #auth-bar .auth-home{color:#a8c7ff;text-decoration:none;font-weight:650;white-space:nowrap;padding:6px 0}
+    #auth-bar .auth-home:hover{color:#fff}
+    #auth-bar .auth-link{color:#d5e5ff;text-decoration:none;cursor:pointer;background:none;border:none;font-size:13.5px;padding:6px 12px;border-radius:6px;white-space:nowrap}
+    #auth-bar .auth-link:hover{color:#fff;background:#ffffff1a}
+    #auth-bar .auth-link.active{color:#fff;background:#ffffff1f;font-weight:650}
+    #auth-bar .auth-name{color:#cfe2ff;white-space:nowrap}
+    #auth-bar .auth-btn{padding:6px 0}
+    @media(max-width:860px){#auth-bar .auth-bar-inner{grid-template-columns:1fr auto;padding:8px 14px;gap:6px 12px}#auth-bar .auth-nav{grid-column:1/-1;grid-row:2;justify-self:center}}
   </style>
 </head>
 <body>
