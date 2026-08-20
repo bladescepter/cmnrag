@@ -279,8 +279,18 @@ def main():
             out_path = os.path.join(OUT_DIR, f"{date_str}_{bc}_vision.json")
             json.dump(data, open(out_path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
             print(f"  [ok] 裁剪扫描已写入 {out_path}")
+            covered = set()
             for col_data in data:
                 print(f"    「{col_data.get('column', '')}」: {len(col_data.get('articles', []))} 篇")
+                covered.update(str(t) for t in col_data.get("articles", []))
+            # 信息性覆盖统计（不警报）：常规版未覆盖属正常（空栏目），策划版才需人工核对
+            uncovered = [t for t in titles
+                         if not any(str(t) in c or c in str(t) for c in covered)]
+            print(f"  [统计] 栏目覆盖 {len(titles)-len(uncovered)}/{len(titles)} 篇")
+            if uncovered:
+                print(f"  未覆盖（常规版空栏目正常，策划版请人工核对）：")
+                for t in uncovered:
+                    print(f"    - {t}")
             continue
 
         err, content = None, "no attempt"
