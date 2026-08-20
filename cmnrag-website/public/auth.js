@@ -1,11 +1,10 @@
-/* 公共会话脚本：页面加载校验登录态，渲染顶部导航栏；未登录跳登录页 */
+/* 公共会话脚本：页面加载校验登录态，填充顶部导航栏右侧用户区；未登录跳登录页
+   顶栏骨架（返回主页 + 模块导航）已静态写入各页面 HTML，本脚本只做：
+   1. 校验登录态，未登录跳转登录页
+   2. 填充用户名 / 管理员入口 / 退出登录
+   3. 按当前路径标记导航高亮 */
 (function () {
   const BAR_ID = "auth-bar";
-  const NAV = [
-    { href: "/db", label: "报纸资料库" },
-    { href: "/proofread", label: "校对系统" },
-    { href: "/schedule", label: "排班系统" }
-  ];
 
   function el(tag, attrs, text) {
     const node = document.createElement(tag);
@@ -14,31 +13,24 @@
     return node;
   }
 
-  function renderBar(user) {
+  function fillBar(user) {
     let bar = document.getElementById(BAR_ID);
     if (!bar) {
+      // 兜底：页面未嵌入静态顶栏时（理论上不会发生），补一个骨架
       bar = el("div", { id: BAR_ID });
+      bar.innerHTML = '<div class="auth-bar-inner"><div class="auth-left"><a class="auth-home" href="/">‹ 返回主页</a></div><nav class="auth-nav"><a class="auth-link" href="/db">报纸资料库</a><a class="auth-link" href="/proofread">校对系统</a><a class="auth-link" href="/schedule">排班系统</a></nav><div class="auth-right"></div></div>';
       document.body.insertBefore(bar, document.body.firstChild);
     }
-    bar.textContent = "";
-    const inner = el("div", { class: "auth-bar-inner" });
 
-    // 左：返回主页
-    const left = el("div", { class: "auth-left" });
-    const home = el("a", { href: "/", class: "auth-home" }, "‹ 返回主页");
-    left.appendChild(home);
-
-    // 中：模块导航（当前页高亮）
-    const nav = el("nav", { class: "auth-nav" });
+    // 当前页导航高亮
     const path = location.pathname.replace(/\/$/, "");
-    NAV.forEach((item) => {
-      const link = el("a", { href: item.href, class: "auth-link" }, item.label);
-      if (path === item.href) link.classList.add("active");
-      nav.appendChild(link);
+    bar.querySelectorAll(".auth-nav .auth-link").forEach((link) => {
+      if (link.getAttribute("href") === path) link.classList.add("active");
     });
 
-    // 右：用户名 / 管理员入口 / 退出登录
-    const right = el("div", { class: "auth-right" });
+    // 右侧用户区
+    const right = bar.querySelector(".auth-right");
+    right.textContent = "";
     const name = el("span", { class: "auth-name" }, (user.display_name || user.username) + " 已登录");
     right.appendChild(name);
     if (user.role === "admin") {
@@ -51,17 +43,12 @@
       location.href = "/login.html";
     });
     right.appendChild(logout);
-
-    inner.appendChild(left);
-    inner.appendChild(nav);
-    inner.appendChild(right);
-    bar.appendChild(inner);
   }
 
   function style() {
     const s = el("style");
     s.textContent = `
-      #auth-bar{background:#123b72;color:#d5e5ff;font-size:13.5px;box-shadow:0 2px 8px #071b3930;position:sticky;top:0;z-index:40}
+      #auth-bar{background:#0d2b52;color:#d5e5ff;font-size:13.5px;box-shadow:0 2px 8px #071b3930;position:sticky;top:0;z-index:40}
       #auth-bar .auth-bar-inner{max-width:1180px;margin:0 auto;padding:10px 24px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px}
       #auth-bar .auth-left{justify-self:start}
       #auth-bar .auth-nav{justify-self:center;display:flex;gap:6px;align-items:center}
@@ -88,16 +75,13 @@
       const res = await fetch("/api/auth/me", { credentials: "same-origin" });
       if (res.status === 200) {
         const data = await res.json();
-        renderBar(data.user);
+        fillBar(data.user);
         return;
       }
     } catch (e) { /* fallthrough to redirect */ }
     location.replace("/login.html?next=" + next);
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
+  // 脚本位于 body 末尾，DOM 已就绪：立即发起鉴权请求，与页面其余解析并行，无需等待 DOMContentLoaded
+  init();
 })();
