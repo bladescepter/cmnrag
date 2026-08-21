@@ -15,6 +15,11 @@
 			"binding": "DB",
 			"database_name": "zgqxb-archive",
 			"database_id": "f0fbe6ce-5e87-4885-9ab6-7e948ec13c4d"
+		},
+		{
+			"binding": "PB_DB",
+			"database_name": "paiban",
+			"database_id": "6ef9cb7b-d2fa-4c20-a5bf-29ae4711748e"
 		}
 	],
 	"vectorize": [

@@ -18,7 +18,7 @@
     if (!bar) {
       // 兜底：页面未嵌入静态顶栏时（理论上不会发生），补一个骨架
       bar = el("div", { id: BAR_ID });
-      bar.innerHTML = '<div class="auth-bar-inner"><div class="auth-left"><a class="auth-home" href="/">‹ 返回主页</a></div><nav class="auth-nav"><a class="auth-link" href="/db">报纸资料库</a><a class="auth-link" href="/proofread">校对系统</a><a class="auth-link" href="/schedule">排班系统</a></nav><div class="auth-right"></div></div>';
+      bar.innerHTML = '<div class="auth-bar-inner"><div class="auth-left"><a class="auth-home" href="/">‹ 返回主页</a></div><nav class="auth-nav"><a class="auth-link" href="/db">报纸资料库</a><a class="auth-link" href="/schedule">排班系统</a></nav><div class="auth-right"></div></div>';
       document.body.insertBefore(bar, document.body.firstChild);
     }
 

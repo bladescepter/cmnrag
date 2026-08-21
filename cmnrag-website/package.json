@@ -7,7 +7,9 @@
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "test": "vitest --config vitest.unit.config.mts",
-    "cf-typegen": "wrangler types"
+    "cf-typegen": "wrangler types",
+    "build:paiban": "npm --prefix paiban-web run build",
+    "deploy:paiban": "npm run build:paiban && npm run deploy"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.12.4",
@@ -18,6 +20,10 @@
     "wrangler": "^4.115.0"
   },
   "dependencies": {
-    "yaml": "^2.9.0"
+    "@hono/zod-validator": "^0.9.0",
+    "hono": "^4.13.3",
+    "xlsx": "^0.18.5",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
   }
 }

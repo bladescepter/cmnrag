@@ -2,7 +2,7 @@
 
 《中国气象报》档案检索系统：**结构化稿件资料库 + 全文检索网站 + 基于 RAG 的 AI 综合问答**。
 
-已清洗的报纸稿件以 Markdown + YAML frontmatter 形式入库，经 Cloudflare Workers 检索服务对外提供。线上入口：主页 <https://cfzx.xiyuan.wiki>，稿件资料库 <https://cfzx.xiyuan.wiki/db>
+已清洗的报纸稿件以 Markdown + YAML frontmatter 形式入库，经 Cloudflare Workers 检索服务对外提供。线上入口：主页 <https://cfzx.xiyuan.wiki>，稿件资料库 <https://cfzx.xiyuan.wiki/db>，采访中心排班表 <https://cfzx.xiyuan.wiki/schedule/>
 
 ## 基本功能
 
@@ -40,10 +40,23 @@
 
 ```
 cmnrag/                 ← 数据真源（按刊期/版面组织的 Markdown 稿件）
-cmnrag-website/         ← Cloudflare Workers 检索服务（源码 + 测试 + 迁移）
+cmnrag-website/         ← Cloudflare Workers 服务（资料库 + 排班表等模块共用一个 Worker）
+  src/archive/          ← 资料库检索 API
+  src/ai/               ← RAG 问答管线
+  src/paiban/           ← 排班表后端（Hono 子应用，挂 /api/pb/*，认证复用主系统）
+  paiban-web/           ← 排班表前端源码（React+Vite，构建产物输出到 public/schedule/）
+  paiban-data/          ← 排班权威源（采访中心综合表格 xlsx、见报日历、导入脚本）
+  public/               ← 静态前端（index 工具集主页、db 资料库、schedule 排班表）
 scripts/                ← 电子报抓取与清洗脚本（fetch_epaper、enrich_regions 等）
 README.md               ← 本文件
 ```
+
+## 排班表模块（paiban）
+
+- 后端：`cmnrag-website/src/paiban/`，D1 库 `paiban`（绑定 `PB_DB`），认证/登录由主系统统一处理
+- 前端：`cmnrag-website/paiban-web/`，构建命令 `npm --prefix paiban-web run build`（或根目录 `npm run build:paiban`），产物直接输出到 `public/schedule/`
+- 权威数据源：`cmnrag-website/paiban-data/采访中心综合表格_2026值班.xlsx`（排班规则以此为准）
+- 旧独立项目 `\DEV\schedule` 已并入本仓库（2026-08），请勿再在其上修改
 
 ## 本地开发
 
@@ -62,6 +75,13 @@ npx tsx scripts/import-archive.ts
 
 # 生成向量入 Vectorize（正文分块 + bge-m3 嵌入；默认自动发现全部月份目录，可用 CMNRAG_MONTHS=202606 限定）
 npx tsx scripts/ingest-vectors.ts
+```
+
+排班表前端改动后：
+
+```bash
+npm run build:paiban    # 构建 React 前端 → public/schedule/
+npm run deploy:paiban   # 构建 + 部署（deploy 前需人工确认）
 ```
 
 ## 技术栈

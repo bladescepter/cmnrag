@@ -1,0 +1,254 @@
+// 排班表 CRUD + 生成路由 (全局共享, 不按用户隔离)
+
+import { Hono } from 'hono';
+import type { Env } from '../index';
+import {
+  CalendarIndex,
+  addDays,
+  generateSchedule,
+  computeStats,
+  type CalendarEntry,
+  type EngineSettings,
+  type ScheduleRow,
+} from '../engine';
+
+/** D1 schedules 表行 (snake_case) */
+interface ScheduleDBRow {
+  id: number;
+  user_id: number;
+  duty_date: string;
+  publish_date: string;
+  weekday: string;
+  first_editor: string | null;
+  second_editor: string | null;
+  remark: string | null;
+  locked: number;
+}
+
+/** D1 行 → 引擎 ScheduleRow (camelCase), 供 computeStats 使用 */
+function toScheduleRow(r: ScheduleDBRow): ScheduleRow {
+  return {
+    id: r.id,
+    dutyDate: r.duty_date,
+    publishDate: r.publish_date,
+    weekday: r.weekday,
+    firstEditor: r.first_editor,
+    secondEditor: r.second_editor,
+    remark: r.remark,
+  };
+}
+
+/** 全局共享 user_id (所有登录用户看到同一份排班) */
+const GLOBAL_USER_ID = 1;
+
+export const scheduleRoutes = new Hono<{ Bindings: Env }>();
+
+// ── Helpers ──
+
+async function loadCalendarEntries(db: D1Database, year: number): Promise<CalendarEntry[]> {
+  const rows = await db.prepare(
+    `SELECT date, type, name FROM calendar WHERE date LIKE ? ORDER BY date`
+  ).bind(`${year}-%`).all<CalendarEntry>();
+  return rows.results ?? [];
+}
+
+async function loadSettings(db: D1Database): Promise<EngineSettings> {
+  const row = await db.prepare('SELECT * FROM settings WHERE id = 1').first<{
+    members_json: string;
+    friday_rotation_json: string;
+    exclusions_json: string | null;
+  }>();
+  if (!row) return { members: [], fridayRotation: [], exclusions: [] };
+  return {
+    members: JSON.parse(row.members_json),
+    fridayRotation: JSON.parse(row.friday_rotation_json),
+    exclusions: JSON.parse(row.exclusions_json ?? '[]'),
+  };
+}
+
+
+// ── CRUD ──
+
+/** 列出全局排班 (按值班日期升序) */
+scheduleRoutes.get('/', async c => {
+  const startDate = c.req.query('start');
+  const endDate = c.req.query('end');
+  let stmt;
+  if (startDate && endDate) {
+    stmt = c.env.PB_DB.prepare(
+      `SELECT * FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ? ORDER BY duty_date`
+    ).bind(GLOBAL_USER_ID, startDate, endDate);
+  } else {
+    stmt = c.env.PB_DB.prepare(
+      `SELECT * FROM schedules WHERE user_id = ? ORDER BY duty_date`
+    ).bind(GLOBAL_USER_ID);
+  }
+  const dbRows = await stmt.all<ScheduleDBRow>();
+  const stats = computeStats(dbRows.results.map(toScheduleRow));
+  return c.json({ rows: dbRows.results, stats });
+});
+
+/** 新增一行 */
+scheduleRoutes.post('/', async c => {
+  const body = await c.req.json();
+  const r = await c.env.PB_DB.prepare(
+    `INSERT INTO schedules (user_id, duty_date, publish_date, weekday, first_editor, second_editor, remark)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    GLOBAL_USER_ID, body.dutyDate, body.publishDate, body.weekday,
+    body.firstEditor ?? null, body.secondEditor ?? null, body.remark ?? null
+  ).run();
+  return c.json({ ok: true, id: r.meta.last_row_id });
+});
+
+/** 更新一行 */
+scheduleRoutes.put('/:id', async c => {
+  const id = Number(c.req.param('id'));
+  const body = await c.req.json();
+  await c.env.PB_DB.prepare(
+    `UPDATE schedules SET
+       duty_date = ?, publish_date = ?, weekday = ?,
+       first_editor = ?, second_editor = ?, remark = ?,
+       updated_at = datetime('now')
+     WHERE id = ? AND user_id = ?`
+  ).bind(
+    body.dutyDate, body.publishDate, body.weekday,
+    body.firstEditor ?? null, body.secondEditor ?? null, body.remark ?? null,
+    id, GLOBAL_USER_ID
+  ).run();
+  return c.json({ ok: true });
+});
+
+/** 删除一行 */
+scheduleRoutes.delete('/:id', async c => {
+  const id = Number(c.req.param('id'));
+  await c.env.PB_DB.prepare(
+    `DELETE FROM schedules WHERE id = ? AND user_id = ?`
+  ).bind(id, GLOBAL_USER_ID).run();
+  return c.json({ ok: true });
+});
+
+/** 清空指定日期范围内的排班 (跳过锁定行) */
+scheduleRoutes.delete('/range/:start/:end', async c => {
+  const start = c.req.param('start');
+  const end = c.req.param('end');
+  await c.env.PB_DB.prepare(
+    `DELETE FROM schedules WHERE user_id = ? AND locked = 0 AND duty_date >= ? AND duty_date <= ?`
+  ).bind(GLOBAL_USER_ID, start, end).run();
+  return c.json({ ok: true });
+});
+
+/** 锁定/解锁一行 */
+scheduleRoutes.put('/:id/lock', async c => {
+  const id = Number(c.req.param('id'));
+  const { locked } = await c.req.json<{ locked: boolean }>();
+  await c.env.PB_DB.prepare(
+    `UPDATE schedules SET locked = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?`
+  ).bind(locked ? 1 : 0, id, GLOBAL_USER_ID).run();
+  return c.json({ ok: true });
+});
+
+/** 批量替换 (用于生成后整体写入) */
+scheduleRoutes.post('/bulk', async c => {
+  const { rows, startDate, endDate } = await c.req.json();
+  // 保留锁定行: 查询已锁定 duty_date, 删除与插入均跳过 (与 /generate 一致)
+  const lockedRows = await c.env.PB_DB.prepare(
+    `SELECT duty_date FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ? AND locked = 1`
+  ).bind(GLOBAL_USER_ID, startDate, endDate).all<{ duty_date: string }>();
+  const lockedDates = new Set(lockedRows.results.map(r => r.duty_date));
+
+  const stmts: D1PreparedStatement[] = [
+    c.env.PB_DB.prepare(
+      `DELETE FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ? AND locked = 0`
+    ).bind(GLOBAL_USER_ID, startDate, endDate),
+  ];
+  for (const r of rows as ScheduleRow[]) {
+    if (lockedDates.has(r.dutyDate)) continue;
+    stmts.push(
+      c.env.PB_DB.prepare(
+        `INSERT INTO schedules (user_id, duty_date, publish_date, weekday, first_editor, second_editor, remark)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        GLOBAL_USER_ID, r.dutyDate, r.publishDate, r.weekday,
+        r.firstEditor ?? null, r.secondEditor ?? null, r.remark ?? null
+      )
+    );
+  }
+  await c.env.PB_DB.batch(stmts);
+  const result = await c.env.PB_DB.prepare(
+    `SELECT * FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ? ORDER BY duty_date`
+  ).bind(GLOBAL_USER_ID, startDate, endDate).all<ScheduleDBRow>();
+  const stats = computeStats(result.results.map(toScheduleRow));
+  return c.json({ ok: true, rows: result.results, stats, skippedLocked: lockedDates.size });
+});
+
+// ── 生成 ──
+/**
+ * 生成本周期排班。
+ * Body: { start: string, end: string, specialRules?: string }
+ * start/end 为值班日期范围 (已由前端从见报日期转换)
+ */
+scheduleRoutes.post('/generate', async c => {
+  const { start, end } = await c.req.json<{
+    start: string; end: string;
+  }>();
+
+  if (!start || !end) {
+    return c.json({ error: '请先选择排班周期' }, 400);
+  }
+
+  const year = new Date(start + 'T00:00:00Z').getUTCFullYear();
+  const entries = await loadCalendarEntries(c.env.PB_DB, year);
+  const cal = new CalendarIndex(entries);
+  const settings = await loadSettings(c.env.PB_DB);
+
+  // 锚点 = 值班日的下一个见报日 (节假日/周末时值班日与见报日相隔多天, 不能用 +1 近似)
+  let anchorDate = addDays(start, 1);
+  for (let i = 0; i < 30 && !cal.isPublish(anchorDate); i++) anchorDate = addDays(anchorDate, 1);
+  const rows = generateSchedule({ anchorDate, entries, settings });
+
+  // 只保留周期范围内的行
+  const filteredRows = rows.filter(r => r.dutyDate >= start && r.dutyDate <= end);
+
+  // 查询已锁定的行 (生成时不覆盖)
+  const lockedRows = await c.env.PB_DB.prepare(
+    `SELECT duty_date FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ? AND locked = 1`
+  ).bind(GLOBAL_USER_ID, start, end).all<{ duty_date: string }>();
+  const lockedDates = new Set(lockedRows.results.map(r => r.duty_date));
+
+  // 删除未锁定的行, 保留锁定的
+  const stmts: D1PreparedStatement[] = [
+    c.env.PB_DB.prepare(
+      `DELETE FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ? AND locked = 0`
+    ).bind(GLOBAL_USER_ID, start, end),
+  ];
+
+  // 插入新生成的行 (跳过已锁定的日期)
+  for (const r of filteredRows) {
+    if (lockedDates.has(r.dutyDate)) continue;
+    stmts.push(
+      c.env.PB_DB.prepare(
+        `INSERT INTO schedules (user_id, duty_date, publish_date, weekday, first_editor, second_editor, remark, locked)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0)`
+      ).bind(
+        GLOBAL_USER_ID, r.dutyDate, r.publishDate, r.weekday,
+        r.firstEditor ?? null, r.secondEditor ?? null, r.remark ?? null
+      )
+    );
+  }
+  await c.env.PB_DB.batch(stmts);
+
+  // 返回完整周期数据 (含锁定的)
+  const result = await c.env.PB_DB.prepare(
+    `SELECT * FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ? ORDER BY duty_date`
+  ).bind(GLOBAL_USER_ID, start, end).all<ScheduleDBRow>();
+  const allRows = result.results.map(toScheduleRow);
+  const stats = computeStats(allRows);
+  return c.json({
+    ok: true,
+    cycle: { start, end },
+    rows: allRows,
+    stats,
+    skippedLocked: lockedDates.size,
+  });
+});

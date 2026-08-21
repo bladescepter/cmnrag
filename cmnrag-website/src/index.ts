@@ -14,6 +14,7 @@ import {
 	requireUser,
 } from "./auth";
 import { chooseEvidenceCount, rerankSources } from "./ai/rerank";
+import paibanApp from "./paiban";
 
 const EMBEDDING_MODEL = "@cf/baai/bge-m3";
 // 70B fp8 指令遵循与稳定性远优于 8B（实测 8B 会被证据中科普设问句劫持、复读无关内容）；
@@ -181,6 +182,10 @@ export default {
 		const url = new URL(request.url);
 		try {
 			if (url.pathname === "/health") return json({ status: "ok" });
+			// 排班健康检查放行（无需登录）
+			if (url.pathname === "/api/pb/health") {
+				return paibanApp.fetch(request, env as never);
+			}
 			// 公开认证接口：注册 / 登录
 			if (url.pathname === "/api/auth/register" && request.method === "POST") return handleRegister(request, env);
 			if (url.pathname === "/api/auth/login" && request.method === "POST") return handleLogin(request, env);
@@ -198,6 +203,10 @@ export default {
 				return handleAdminAction(request, env, adminMatch[1], adminMatch[2] as "approve" | "reject");
 			}
 			if (!user) return error("unauthorized", 401);
+			// 排班子应用：/api/pb/* 交给 paiban（已通过主登录鉴权）
+			if (url.pathname.startsWith("/api/pb/")) {
+				return paibanApp.fetch(request, env as never);
+			}
 			if (url.pathname === "/api/columns") return listFacet(url, env, "column_name");
 			if (url.pathname === "/api/themes") return listFacet(url, env, "theme");
 			if (url.pathname === "/api/answer" && request.method === "POST") return answerQuestion(request, env);

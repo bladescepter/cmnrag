@@ -32,16 +32,16 @@
   </style>
 </head>
 <body>
-<div id="auth-bar"><div class="auth-bar-inner"><div class="auth-left"><a class="auth-home" href="/">‹ 返回主页</a></div><nav class="auth-nav"><a class="auth-link" href="/db">报纸资料库</a><a class="auth-link" href="/proofread">校对系统</a><a class="auth-link" href="/schedule">排班系统</a></nav><div class="auth-right"></div></div></div>
-<header><h1>中国气象报资料检索</h1><p>支持按关键词搜索，按日期、版面、主题、栏目、地区、作者精确筛选，基于筛选内容与AI对话。<br>当前覆盖7月1日至今内容，最新一期报纸中午前后更新（需在电子报更新后），计划逐步补完2026年内容。</p></header>
+<div id="auth-bar"><div class="auth-bar-inner"><div class="auth-left"><a class="auth-home" href="/">‹ 返回主页</a></div><nav class="auth-nav"><a class="auth-link" href="/db">报纸资料库</a><a class="auth-link" href="/schedule">排班系统</a></nav><div class="auth-right"></div></div></div>
+<header><h1>中国气象报资料检索</h1><p>支持按关键词搜索，按日期、版面、版头、栏目、地区、作者精确筛选，基于筛选内容与AI对话。<br>当前覆盖7月1日至今内容，最新一期报纸中午前后更新（需在电子报更新后），计划逐步补完2026年内容。</p></header>
 <main>
   <section class="panel">
     <form id="search-form">
-      <div class="search"><div><label for="q">关键词</label><input id="q" name="q" placeholder="搜索标题、正文、作者、栏目或地区" /></div><div style="align-self:end"><button type="submit">检索</button></div></div>
+      <div class="search"><div><label for="q">关键词</label><input id="q" name="q" placeholder="搜索标题或正文" /></div><div style="align-self:end"><button type="submit">检索</button></div></div>
       <div class="filters">
         <div><label for="date-from">起始日期</label><input id="date-from" type="date" name="date_from" /></div><div><label for="date-to">结束日期</label><input id="date-to" type="date" name="date_to" /></div>
         <div><label for="page">版面</label><select id="page" name="page"><option value="">全部版面</option><option>一版</option><option>二版</option><option>三版</option><option>四版</option></select></div>
-        <div class="facet-field"><label for="theme">主题</label><input id="theme" name="theme" autocomplete="off" placeholder="输入主题名称的一部分，或从候选中选择" /><div id="theme-options" class="facet-menu"></div></div>
+        <div class="facet-field"><label for="theme">版头</label><input id="theme" name="theme" autocomplete="off" placeholder="输入版头名称的一部分，或从候选中选择" /><div id="theme-options" class="facet-menu"></div></div>
         <div class="span2 facet-field"><label for="column">栏目</label><input id="column" name="column" autocomplete="off" placeholder="输入栏目名称的一部分，或从候选中选择" /><div id="column-options" class="facet-menu"></div></div>
         <div><label for="region">主体地区</label><input id="region" name="region" placeholder="如：河北、唐山、沙河" /></div><div><label for="author">作者</label><input id="author" name="author" placeholder="姓名" /></div>
       </div>
@@ -70,12 +70,12 @@ function params(){const data=new FormData(form), p=new URLSearchParams();for(con
 function esc(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function renderItems(items){return items.map(x=>`<div class="result" data-id="${esc(x.article_id)}"><div><div class="title">${esc(x.title)}</div><div class="meta"><span>${esc(x.published_date)}</span><span class="pill page-pill">${esc(x.page)}</span><span class="pill author-pill">${esc(text(x.author,'作者'))}</span><span class="pill column-pill">${esc(text(x.column_name,'栏目'))}</span><span class="pill region-pill">${esc(text(x.region,'地区'))}</span></div></div><div class="hint">阅读全文 ›</div></div>`).join('')}
 async function search(append=false){notice.style.display='none';if(!append){searchOffset=0;results.innerHTML='<div class="empty">正在检索…</div>';moreResults.hidden=true}try{const p=params();p.set('limit','50');p.set('offset',String(searchOffset));const r=await fetch('/api/articles?'+p);const d=await r.json();if(!r.ok)throw new Error(d.error||'请求失败');searchTotal=d.total;searchOffset+=d.items.length;summary.textContent=`共找到 ${d.total} 篇稿件 · 已显示 ${searchOffset} 篇`;if(!append)results.innerHTML=d.items.length?renderItems(d.items):'<div class="empty">没有符合条件的稿件。</div>';else results.insertAdjacentHTML('beforeend',renderItems(d.items));moreResults.hidden=!d.has_more;if(d.has_more)loadMore.textContent=`加载更多（还有 ${d.total-searchOffset} 篇）`}catch(e){if(!append)results.innerHTML='';notice.textContent='检索失败：'+e.message;notice.style.display='block'}}
-async function article(id){const r=await fetch('/api/articles/'+encodeURIComponent(id)), a=await r.json();if(!r.ok)return;document.querySelector('#article-title').textContent=a.title;document.querySelector('#article-meta').innerHTML=`日期：${esc(a.published_date)}　版面：${esc(a.page)}　作者：${esc(text(a.author,'作者'))}<br>主题：${esc(a.theme)}　栏目：${esc(text(a.column_name,'栏目'))}　地区：${esc(text(a.region,'地区'))}`;document.querySelector('#article-content').textContent=a.content||'原文内容未收录；该稿仅保留结构化档案信息。';dialog.showModal()}
+async function article(id){const r=await fetch('/api/articles/'+encodeURIComponent(id)), a=await r.json();if(!r.ok)return;document.querySelector('#article-title').textContent=a.title;document.querySelector('#article-meta').innerHTML=`日期：${esc(a.published_date)}　版面：${esc(a.page)}　作者：${esc(text(a.author,'作者'))}<br>版头：${esc(a.theme)}　栏目：${esc(text(a.column_name,'栏目'))}　地区：${esc(text(a.region,'地区'))}`;document.querySelector('#article-content').textContent=a.content||'原文内容未收录；该稿仅保留结构化档案信息。';dialog.showModal()}
 async function loadFacetOptions(input,options,endpoint){try{const q=input.value.trim();const r=await fetch(`${endpoint}?q=${encodeURIComponent(q)}`),d=await r.json();if(!r.ok)return;options.innerHTML=d.items.map(x=>`<button type="button" class="facet-option" data-value="${esc(x.value)}"><span class="facet-option-name">${esc(x.value)}</span></button>`).join('');options.classList.toggle('open',d.items.length>0)}catch{}}
 function chooseFacet(event,input,options){const option=event.target.closest('.facet-option');if(!option)return;input.value=option.dataset.value;options.classList.remove('open');}
 let conversation=[];let scopeKey='';
 function currentFilters(){return Object.fromEntries(new FormData(form).entries())}
-function scopeText(filters){const entries=Object.entries(filters).filter(([,v])=>String(v).trim());return entries.length?`当前范围：${entries.map(([k,v])=>({date_from:'起始日期',date_to:'结束日期',page:'版面',theme:'主题',column:'栏目',region:'地区',author:'作者',q:'关键词'}[k]||k)+`“${v}”`).join(' · ')}`:'当前范围：全部稿件'}
+function scopeText(filters){const entries=Object.entries(filters).filter(([,v])=>String(v).trim());return entries.length?`当前范围：${entries.map(([k,v])=>({date_from:'起始日期',date_to:'结束日期',page:'版面',theme:'版头',column:'栏目',region:'地区',author:'作者',q:'关键词'}[k]||k)+`“${v}”`).join(' · ')}`:'当前范围：全部稿件'}
 function appendMessage(role,content){const node=document.createElement('article');node.className=`chat-message ${role}`;node.textContent=content;chatLog.append(node);chatLog.scrollTop=chatLog.scrollHeight;return node}
 function resetConversation(message='输入问题开始问答。每一轮都会在当前筛选范围内重新检索原稿。'){conversation=[];chatLog.innerHTML=`<p class="chat-empty">${esc(message)}</p>`}
 function ensureScope(){const filters=currentFilters(),key=JSON.stringify(filters);chatScope.textContent=scopeText(filters);if(scopeKey&&scopeKey!==key)resetConversation('检索范围已变更，已开启新对话。');scopeKey=key;return filters}
