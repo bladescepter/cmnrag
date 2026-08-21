@@ -22,6 +22,9 @@ export interface GenerateParams {
    *  生成新周期时应传入历史最后一位周五编辑的下一位置, 保证轮换接续,
    *  否则每次生成都会从 fridayRotation[0] 重新开始。 */
   fridayRotationStart?: number;
+  /** 已锁定的格子: dutyDate -> 该日锁定的编辑 (一版/二版可分别锁定)。
+   *  锁定的编辑计入版数统计且分配时直接保留, 未锁定的格子正常分配。 */
+  lockedCells?: Map<string, { first?: string; second?: string }>;
 }
 
 /**
@@ -88,6 +91,17 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
   const fridayFirst = new Map<string, string>(); // dutyDate -> 周五轮换编辑
   let rotIdx = params.fridayRotationStart ?? 0;
 
+  // 已锁定格子预填: 锁定编辑计入版数统计 (均衡正确), 分配时直接保留
+  const lockedCells = params.lockedCells ?? new Map<string, { first?: string; second?: string }>();
+  for (const [duty, cell] of lockedCells) {
+    if (cell.first) {
+      assignEditor(count, personDuties, lastDuty, weekCount, cell.first, 'first', duty, liuZhaoMax);
+    }
+    if (cell.second) {
+      assignEditor(count, personDuties, lastDuty, weekCount, cell.second, 'second', duty, liuZhaoMax);
+    }
+  }
+
   // 先处理周五/节前值班日 (以值班日判定)
   // 仅记录轮换位, 不在此处 assignEditor (避免与主循环重复计数)
   for (const pub of publishDates) {
@@ -137,8 +151,11 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
     if (!weekCount.has(wk)) weekCount.set(wk, new Map());
     const wc = weekCount.get(wk)!;
 
-    // 一版 (若已被周五轮换填上)
-    if (fridayFirst.has(duty)) {
+    // 一版: 锁定格优先保留 → 轮换位 → 名额预约 → 贪心
+    const lockedFirst = lockedCells.get(duty)?.first;
+    if (lockedFirst) {
+      row.firstEditor = lockedFirst;
+    } else if (fridayFirst.has(duty)) {
       const fe = fridayFirst.get(duty)!;
       if (excludeSet.has(`${duty}|${fe}`)) {
         // 周五轮换编辑休假, 另选
@@ -167,7 +184,7 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
         });
       }
     }
-    if (row.firstEditor) {
+    if (row.firstEditor && row.firstEditor !== lockedFirst) {
       assignEditor(count, personDuties, lastDuty, weekCount, row.firstEditor, 'first', duty, liuZhaoMax);
     }
   }
@@ -179,16 +196,22 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
     if (!weekCount.has(wk)) weekCount.set(wk, new Map());
     const wc = weekCount.get(wk)!;
 
-    row.secondEditor = pickEditor({
-      candidates: secondCapable,
-      count, personDuties, lastDuty, wc, duty,
-      minGap, liuZhaoMax, ideal, role: 'second',
-      cal, bothSet, weekday: row.weekday,
-      exclude: secondCapable.filter(n => excludeSet.has(`${duty}|${n}`))
-        .concat(row.firstEditor ? [row.firstEditor] : []),
-    });
-    if (row.secondEditor) {
-      assignEditor(count, personDuties, lastDuty, weekCount, row.secondEditor, 'second', duty, liuZhaoMax);
+    // 二版: 锁定格优先保留, 否则贪心 (且不与一版同一人)
+    const lockedSecond = lockedCells.get(duty)?.second;
+    if (lockedSecond) {
+      row.secondEditor = lockedSecond;
+    } else {
+      row.secondEditor = pickEditor({
+        candidates: secondCapable,
+        count, personDuties, lastDuty, wc, duty,
+        minGap, liuZhaoMax, ideal, role: 'second',
+        cal, bothSet, weekday: row.weekday,
+        exclude: secondCapable.filter(n => excludeSet.has(`${duty}|${n}`))
+          .concat(row.firstEditor ? [row.firstEditor] : []),
+      });
+      if (row.secondEditor) {
+        assignEditor(count, personDuties, lastDuty, weekCount, row.secondEditor, 'second', duty, liuZhaoMax);
+      }
     }
   }
 

@@ -83,8 +83,12 @@ table.schedule td input:focus, table.schedule td select:focus { outline: 2px sol
 .row-holiday { background: #fff3e0; }
 .non-duty-cell { color: #aaa; }
 table.schedule tr.row-highlight { background: #e8f5e9; }
-/* 锁定 */
-.lock-cell { text-align: center; }
-.lock-btn { border: none; background: none; cursor: pointer; font-size: 14px; padding: 2px; opacity: 0.5; }
-.lock-btn:hover { opacity: 1; }
-.lock-btn.locked { opacity: 1; }
+/* 有任一格子锁定的行: 轻微金色底提示 */
+table.schedule tr.row-locked { background: #fefbe8; }
+/* 格子锁定: 编辑下拉框 + 紧凑小锁钮并排 */
+.cell-editor { display: inline-flex; align-items: center; gap: 3px; }
+.cell-editor select { padding: 1px 2px; }
+.cell-lock { border: none; background: none; cursor: pointer; font-size: 11px; line-height: 1; padding: 1px 2px; opacity: 0.35; }
+.cell-lock:hover { opacity: 0.9; }
+.cell-lock.locked { opacity: 1; }
+.cell-lock:disabled { opacity: 0.15; cursor: default; }

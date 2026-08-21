@@ -127,4 +127,34 @@ describe('周五轮换接续', () => {
     // 不相邻 (间隔至少 3 行)
     expect(Math.abs(positions[0] - positions[1])).toBeGreaterThanOrEqual(3);
   });
+
+  it('锁定格子: 一版锁定时保留锁定值, 未锁定格正常分配', () => {
+    const locked = new Map<string, { first?: string; second?: string }>();
+    locked.set('2026-09-18', { first: '黄彬' }); // 锁定 9-18 一版为黄彬 (原轮换位是张宏伟)
+    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0, lockedCells: locked });
+    const r = rows.find(x => x.dutyDate === '2026-09-18');
+    expect(r?.firstEditor).toBe('黄彬');
+    // 其余行仍生成
+    expect(rows.filter(x => x.firstEditor).length).toBeGreaterThan(10);
+  });
+
+  it('锁定格子计入均衡: 锁定者版数被统计, 生成后其总版数合理', () => {
+    // 锁定 9-18 一版给 黄彬, 9-24 一版给 黄彬 (让他锁定 2 个一版)
+    const locked = new Map<string, { first?: string; second?: string }>();
+    locked.set('2026-09-18', { first: '黄彬' });
+    locked.set('2026-09-24', { first: '黄彬' });
+    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0, lockedCells: locked });
+    const huang = rows.filter(r => r.firstEditor === '黄彬').length;
+    // 锁定 2 个一版 + 贪心至多再补 1 个, 总一版 ≤ 3 (均衡约束下不会无限制堆)
+    expect(huang).toBeLessThanOrEqual(3);
+    expect(huang).toBeGreaterThanOrEqual(2);
+  });
+
+  it('锁定二版格子: 保留锁定值且不与一版冲突', () => {
+    const locked = new Map<string, { first?: string; second?: string }>();
+    locked.set('2026-09-18', { second: '郭笑羽' });
+    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0, lockedCells: locked });
+    const r = rows.find(x => x.dutyDate === '2026-09-18');
+    expect(r?.secondEditor).toBe('郭笑羽');
+  });
 });

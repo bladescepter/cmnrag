@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS schedules (
   second_editor TEXT,               -- 二版编辑
   remark TEXT,                      -- 备注
   sort_order INTEGER,               -- 排序 (按值班日期)
-  locked INTEGER NOT NULL DEFAULT 0,   -- 0=未锁定, 1=锁定 (生成时跳过)
+  locked_first INTEGER NOT NULL DEFAULT 0,   -- 一版格子锁定: 1=生成时保留该格
+  locked_second INTEGER NOT NULL DEFAULT 0,  -- 二版格子锁定: 1=生成时保留该格
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

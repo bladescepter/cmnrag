@@ -23,7 +23,8 @@ interface ScheduleDBRow {
   first_editor: string | null;
   second_editor: string | null;
   remark: string | null;
-  locked: number;
+  locked_first: number;
+  locked_second: number;
 }
 
 /** D1 行 → 引擎 ScheduleRow (camelCase), 供 computeStats 使用 */
@@ -166,49 +167,109 @@ scheduleRoutes.delete('/:id', async c => {
   return c.json({ ok: true });
 });
 
-/** 清空指定日期范围内的排班 (跳过锁定行) */
+/** 清空指定日期范围内的排班 (保留任一格子被锁定的行) */
 scheduleRoutes.delete('/range/:start/:end', async c => {
   const start = c.req.param('start');
   const end = c.req.param('end');
   await c.env.PB_DB.prepare(
-    `DELETE FROM schedules WHERE user_id = ? AND locked = 0 AND duty_date >= ? AND duty_date <= ?`
+    `DELETE FROM schedules WHERE user_id = ? AND locked_first = 0 AND locked_second = 0 AND duty_date >= ? AND duty_date <= ?`
   ).bind(GLOBAL_USER_ID, start, end).run();
   return c.json({ ok: true });
 });
 
-/** 锁定/解锁一行 */
+/** 锁定/解锁一行 (一版/二版格子可分别锁定, 也可同时) */
 scheduleRoutes.put('/:id/lock', async c => {
   const id = Number(c.req.param('id'));
-  const { locked } = await c.req.json<{ locked: boolean }>();
+  const body = await c.req.json<{ first?: boolean; second?: boolean }>();
+  const set: string[] = [];
+  const params: (number | string)[] = [];
+  if (body.first !== undefined) { set.push('locked_first = ?'); params.push(body.first ? 1 : 0); }
+  if (body.second !== undefined) { set.push('locked_second = ?'); params.push(body.second ? 1 : 0); }
+  if (set.length === 0) return c.json({ error: 'first/second 至少传一个' }, 400);
+  params.push(id, GLOBAL_USER_ID);
   await c.env.PB_DB.prepare(
-    `UPDATE schedules SET locked = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?`
-  ).bind(locked ? 1 : 0, id, GLOBAL_USER_ID).run();
+    `UPDATE schedules SET ${set.join(', ')}, updated_at = datetime('now') WHERE id = ? AND user_id = ?`
+  ).bind(...params).run();
   return c.json({ ok: true });
 });
 
-/** 批量替换 (用于生成后整体写入) */
+/** 读取范围内已锁定的格子 + 需保留的整行数据 (用于生成/批量替换时保留) */
+async function loadLockedState(
+  db: D1Database,
+  start: string,
+  end: string
+): Promise<{
+  lockedCells: Map<string, { first?: string; second?: string }>;
+  preserved: Map<string, { publish_date: string; weekday: string; first_editor: string | null; second_editor: string | null; remark: string | null }>;
+}> {
+  const rows = await db.prepare(
+    `SELECT duty_date, publish_date, weekday, first_editor, second_editor, remark, locked_first, locked_second
+     FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ?`
+  ).bind(GLOBAL_USER_ID, start, end).all<{
+    duty_date: string; publish_date: string; weekday: string;
+    first_editor: string | null; second_editor: string | null; remark: string | null;
+    locked_first: number; locked_second: number;
+  }>();
+  const lockedCells = new Map<string, { first?: string; second?: string }>();
+  const preserved = new Map<string, { publish_date: string; weekday: string; first_editor: string | null; second_editor: string | null; remark: string | null }>();
+  for (const r of rows.results) {
+    if (r.locked_first !== 1 && r.locked_second !== 1) continue;
+    preserved.set(r.duty_date, {
+      publish_date: r.publish_date, weekday: r.weekday,
+      first_editor: r.first_editor, second_editor: r.second_editor, remark: r.remark,
+    });
+    const cell: { first?: string; second?: string } = {};
+    if (r.locked_first === 1 && r.first_editor) cell.first = r.first_editor;
+    if (r.locked_second === 1 && r.second_editor) cell.second = r.second_editor;
+    lockedCells.set(r.duty_date, cell);
+  }
+  return { lockedCells, preserved };
+}
+
+/** 批量替换 (用于生成后整体写入; 保留锁定格, 未锁定格用传入 rows 覆盖) */
 scheduleRoutes.post('/bulk', async c => {
-  const { rows, startDate, endDate } = await c.req.json();
-  // 保留锁定行: 查询已锁定 duty_date, 删除与插入均跳过 (与 /generate 一致)
-  const lockedRows = await c.env.PB_DB.prepare(
-    `SELECT duty_date FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ? AND locked = 1`
-  ).bind(GLOBAL_USER_ID, startDate, endDate).all<{ duty_date: string }>();
-  const lockedDates = new Set(lockedRows.results.map(r => r.duty_date));
+  const { rows, startDate, endDate } = await c.req.json<{
+    rows: ScheduleRow[]; startDate: string; endDate: string;
+  }>();
+  const { lockedCells, preserved } = await loadLockedState(c.env.PB_DB, startDate, endDate);
+
+  // 合并: 传入 rows 为主, 锁定格/锁定行数据覆盖回去
+  const merged = new Map<string, ScheduleRow>();
+  for (const r of rows) merged.set(r.dutyDate, r);
+  for (const [duty, r] of merged) {
+    const cell = lockedCells.get(duty);
+    const p = preserved.get(duty);
+    if (cell) {
+      if (cell.first) r.firstEditor = cell.first;
+      if (cell.second) r.secondEditor = cell.second;
+    }
+    if (p) r.remark = p.remark ?? r.remark;
+  }
+  // 范围内有锁定但不在传入 rows 中的行 (如周末/休刊手填行) 也保留
+  for (const [duty, p] of preserved) {
+    if (!merged.has(duty)) {
+      merged.set(duty, {
+        dutyDate: duty, publishDate: p.publish_date, weekday: p.weekday,
+        firstEditor: p.first_editor, secondEditor: p.second_editor, remark: p.remark,
+      });
+    }
+  }
 
   const stmts: D1PreparedStatement[] = [
     c.env.PB_DB.prepare(
-      `DELETE FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ? AND locked = 0`
+      `DELETE FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ?`
     ).bind(GLOBAL_USER_ID, startDate, endDate),
   ];
-  for (const r of rows as ScheduleRow[]) {
-    if (lockedDates.has(r.dutyDate)) continue;
+  for (const r of [...merged.values()].sort((a, b) => (a.dutyDate < b.dutyDate ? -1 : 1))) {
+    const cell = lockedCells.get(r.dutyDate);
     stmts.push(
       c.env.PB_DB.prepare(
-        `INSERT INTO schedules (user_id, duty_date, publish_date, weekday, first_editor, second_editor, remark)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO schedules (user_id, duty_date, publish_date, weekday, first_editor, second_editor, remark, locked_first, locked_second)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         GLOBAL_USER_ID, r.dutyDate, r.publishDate, r.weekday,
-        r.firstEditor ?? null, r.secondEditor ?? null, r.remark ?? null
+        r.firstEditor ?? null, r.secondEditor ?? null, r.remark ?? null,
+        cell?.first ? 1 : 0, cell?.second ? 1 : 0
       )
     );
   }
@@ -217,7 +278,7 @@ scheduleRoutes.post('/bulk', async c => {
     `SELECT * FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ? ORDER BY duty_date`
   ).bind(GLOBAL_USER_ID, startDate, endDate).all<ScheduleDBRow>();
   const stats = computeStats(result.results.map(toScheduleRow));
-  return c.json({ ok: true, rows: result.results, stats, skippedLocked: lockedDates.size });
+  return c.json({ ok: true, rows: result.results, stats, skippedLocked: lockedCells.size });
 });
 
 // ── 生成 ──
@@ -246,34 +307,50 @@ scheduleRoutes.post('/generate', async c => {
   // 轮换接续: 起点 = 历史最近一个周五轮换位的下一人 (否则每次从 rotation[0] 重新开始)
   const rotation = rotationList(settings);
   const fridayRotationStart = await computeFridayRotationStart(c.env.PB_DB, start, rotation, cal);
-  const rows = generateSchedule({ anchorDate, entries, settings, fridayRotationStart });
+  // 锁定格子: 已锁定的编辑计入均衡统计并在生成结果中保留
+  const { lockedCells, preserved } = await loadLockedState(c.env.PB_DB, start, end);
+  const rows = generateSchedule({ anchorDate, entries, settings, fridayRotationStart, lockedCells });
 
   // 只保留周期范围内的行
   const filteredRows = rows.filter(r => r.dutyDate >= start && r.dutyDate <= end);
 
-  // 查询已锁定的行 (生成时不覆盖)
-  const lockedRows = await c.env.PB_DB.prepare(
-    `SELECT duty_date FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ? AND locked = 1`
-  ).bind(GLOBAL_USER_ID, start, end).all<{ duty_date: string }>();
-  const lockedDates = new Set(lockedRows.results.map(r => r.duty_date));
+  // 合并: 生成结果为主, 锁定行/锁定格数据覆盖回去 (含备注与周末手填行)
+  const merged = new Map<string, ScheduleRow>();
+  for (const r of filteredRows) merged.set(r.dutyDate, r);
+  for (const [duty, r] of merged) {
+    const cell = lockedCells.get(duty);
+    const p = preserved.get(duty);
+    if (cell) {
+      if (cell.first) r.firstEditor = cell.first;
+      if (cell.second) r.secondEditor = cell.second;
+    }
+    if (p) r.remark = p.remark ?? r.remark;
+  }
+  for (const [duty, p] of preserved) {
+    if (!merged.has(duty)) {
+      merged.set(duty, {
+        dutyDate: duty, publishDate: p.publish_date, weekday: p.weekday,
+        firstEditor: p.first_editor, secondEditor: p.second_editor, remark: p.remark,
+      });
+    }
+  }
 
-  // 删除未锁定的行, 保留锁定的
+  // 删除范围内所有行, 重新写入合并结果 (锁定标记随格子保留)
   const stmts: D1PreparedStatement[] = [
     c.env.PB_DB.prepare(
-      `DELETE FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ? AND locked = 0`
+      `DELETE FROM schedules WHERE user_id = ? AND duty_date BETWEEN ? AND ?`
     ).bind(GLOBAL_USER_ID, start, end),
   ];
-
-  // 插入新生成的行 (跳过已锁定的日期)
-  for (const r of filteredRows) {
-    if (lockedDates.has(r.dutyDate)) continue;
+  for (const r of [...merged.values()].sort((a, b) => (a.dutyDate < b.dutyDate ? -1 : 1))) {
+    const cell = lockedCells.get(r.dutyDate);
     stmts.push(
       c.env.PB_DB.prepare(
-        `INSERT INTO schedules (user_id, duty_date, publish_date, weekday, first_editor, second_editor, remark, locked)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0)`
+        `INSERT INTO schedules (user_id, duty_date, publish_date, weekday, first_editor, second_editor, remark, locked_first, locked_second)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         GLOBAL_USER_ID, r.dutyDate, r.publishDate, r.weekday,
-        r.firstEditor ?? null, r.secondEditor ?? null, r.remark ?? null
+        r.firstEditor ?? null, r.secondEditor ?? null, r.remark ?? null,
+        cell?.first ? 1 : 0, cell?.second ? 1 : 0
       )
     );
   }
@@ -290,6 +367,6 @@ scheduleRoutes.post('/generate', async c => {
     cycle: { start, end },
     rows: allRows,
     stats,
-    skippedLocked: lockedDates.size,
+    skippedLocked: lockedCells.size,
   });
 });

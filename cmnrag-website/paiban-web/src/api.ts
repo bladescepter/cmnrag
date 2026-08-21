@@ -11,7 +11,8 @@ export interface ScheduleRowDB {
   first_editor: string | null;
   second_editor: string | null;
   remark: string | null;
-  locked: number;
+  locked_first: number;
+  locked_second: number;
 }
 
 export interface PeriodStats {
@@ -154,10 +155,10 @@ export const api = {
       body: JSON.stringify({ start, end }),
     });
   },
-  toggleLock(id: number, locked: boolean): Promise<{ ok: boolean }> {
+  toggleLock(id: number, patch: { first?: boolean; second?: boolean }): Promise<{ ok: boolean }> {
     return request(`/schedule/${id}/lock`, {
       method: 'PUT',
-      body: JSON.stringify({ locked }),
+      body: JSON.stringify(patch),
     });
   },
 };

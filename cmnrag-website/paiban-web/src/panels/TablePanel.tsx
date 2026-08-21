@@ -16,7 +16,8 @@ interface DisplayRow {
   firstEditor: string | null;
   secondEditor: string | null;
   remark: string | null;
-  locked: boolean;
+  lockedFirst: boolean;
+  lockedSecond: boolean;
 }
 
 const WEEKDAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -133,7 +134,8 @@ export default function TablePanel({
           firstEditor: sched?.first_editor ?? null,
           secondEditor: sched?.second_editor ?? null,
           remark: sched?.remark ?? null,
-          locked: sched?.locked === 1,
+          lockedFirst: sched?.locked_first === 1,
+          lockedSecond: sched?.locked_second === 1,
         });
       } else {
         // 周末/休刊日: 若有排班数据则显示, 否则显示"周末"/"休刊"
@@ -150,7 +152,8 @@ export default function TablePanel({
             publishDate: sched.publish_date,
             firstEditor: sched.first_editor,
             remark: sched.remark,
-            locked: sched.locked === 1,
+            lockedFirst: sched.locked_first === 1,
+            lockedSecond: sched.locked_second === 1,
           });
         } else {
           allDays.push({
@@ -165,7 +168,8 @@ export default function TablePanel({
             firstEditor: null,
             secondEditor: null,
             remark: isHoliday ? '休刊' : null,
-            locked: false,
+            lockedFirst: false,
+            lockedSecond: false,
           });
         }
       }
@@ -214,10 +218,26 @@ export default function TablePanel({
     }
   };
 
-  const toggleLock = async (row: DisplayRow) => {
+  const toggleLock = async (row: DisplayRow, side: 'first' | 'second') => {
     if (row.scheduleId === null) return;
-    await api.toggleLock(row.scheduleId, !row.locked);
+    const locked = side === 'first' ? row.lockedFirst : row.lockedSecond;
+    await api.toggleLock(row.scheduleId, { [side]: !locked });
     load();
+  };
+
+  const lockBtn = (row: DisplayRow, side: 'first' | 'second') => {
+    const locked = side === 'first' ? row.lockedFirst : row.lockedSecond;
+    return (
+      <button
+        type="button"
+        className={locked ? 'cell-lock locked' : 'cell-lock'}
+        onClick={() => toggleLock(row, side)}
+        title={locked ? '已锁定，生成排班时保留' : '点击锁定该格，生成排班时保留'}
+        disabled={row.scheduleId === null}
+      >
+        {locked ? '🔒' : '🔓'}
+      </button>
+    );
   };
 
 
@@ -239,7 +259,6 @@ export default function TablePanel({
             <th>二版编辑</th>
             <th>备注</th>
             <th>见报日期</th>
-            <th>锁定</th>
           </tr>
         </thead>
         <tbody>
@@ -251,7 +270,7 @@ export default function TablePanel({
                 r.isWeekend ? 'row-weekend' : '',
                 r.isHoliday ? 'row-holiday' : '',
                 highlightRange && r.date >= highlightRange.start && r.date <= highlightRange.end ? 'row-highlight' : '',
-                r.locked ? 'row-locked' : '',
+                r.lockedFirst || r.lockedSecond ? 'row-locked' : '',
               ].filter(Boolean).join(' ')}
             >
               <td>{r.date}</td>
@@ -259,22 +278,28 @@ export default function TablePanel({
               {r.isDutyDay || r.scheduleId !== null ? (
                 <>
                   <td>
-                    <select
-                      value={r.firstEditor ?? ''}
-                      onChange={e => updateField(r, 'firstEditor', e.target.value)}
-                    >
-                      <option value="">-</option>
-                      {editorNames.map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
+                    <span className="cell-editor">
+                      <select
+                        value={r.firstEditor ?? ''}
+                        onChange={e => updateField(r, 'firstEditor', e.target.value)}
+                      >
+                        <option value="">-</option>
+                        {editorNames.map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      {lockBtn(r, 'first')}
+                    </span>
                   </td>
                   <td>
-                    <select
-                      value={r.secondEditor ?? ''}
-                      onChange={e => updateField(r, 'secondEditor', e.target.value)}
-                    >
-                      <option value="">-</option>
-                      {editorNames.map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
+                    <span className="cell-editor">
+                      <select
+                        value={r.secondEditor ?? ''}
+                        onChange={e => updateField(r, 'secondEditor', e.target.value)}
+                      >
+                        <option value="">-</option>
+                        {editorNames.map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      {lockBtn(r, 'second')}
+                    </span>
                   </td>
                   <td>
                     <input
@@ -285,17 +310,6 @@ export default function TablePanel({
                     />
                   </td>
                   <td>{r.publishDate ?? '-'}</td>
-                  <td className="lock-cell">
-                    {r.scheduleId !== null && (
-                      <button
-                        className={r.locked ? 'lock-btn locked' : 'lock-btn'}
-                        onClick={() => toggleLock(r)}
-                        title={r.locked ? '点击解锁' : '点击锁定'}
-                      >
-                        {r.locked ? '🔒' : '🔓'}
-                      </button>
-                    )}
-                  </td>
                 </>
               ) : (
                 <td colSpan={5} className="non-duty-cell">
