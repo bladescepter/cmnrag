@@ -85,38 +85,38 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
   // 周内次数: key = ISO周-年, value = Map<name, count>
   const weekCount = new Map<string, Map<string, number>>();
 
-  const rows: ScheduleRow[] = [];
   const fridayFirst = new Map<string, string>(); // dutyDate -> 周五轮换编辑
   let rotIdx = params.fridayRotationStart ?? 0;
 
   // 先处理周五/节前值班日 (以值班日判定)
+  // 仅记录轮换位, 不在此处 assignEditor (避免与主循环重复计数)
   for (const pub of publishDates) {
     const duty = cal.dutyDateOf(pub);
     if (isFridayOrPreHoliday(duty, cal)) {
       const editor = rotation[rotIdx % rotation.length] ?? null;
       rotIdx++;
-      if (editor) {
-        fridayFirst.set(duty, editor);
-        assignEditor(count, personDuties, lastDuty, weekCount, editor, 'first', duty, liuZhaoMax);
-      }
+      if (editor) fridayFirst.set(duty, editor);
     }
   }
 
-  // 再遍历所有见报日, 填充一版/二版
-  for (const pub of publishDates) {
-    const duty = cal.dutyDateOf(pub);
+  // 两阶段分配: 先全部分配一版, 再全部分配二版。
+  // 这样二版分配能看到完整的一版结果, 对"一版少的人"优先补二版,
+  // 避免逐行交替分配时一版/二版互相干扰造成的两极分化。
+  const rows: ScheduleRow[] = publishDates.map(pub => ({
+    dutyDate: cal.dutyDateOf(pub),
+    publishDate: pub,
+    weekday: weekdayName(cal.dutyDateOf(pub)),
+    firstEditor: null,
+    secondEditor: null,
+    remark: null,
+  }));
+
+  // 阶段 1: 一版
+  for (const row of rows) {
+    const duty = row.dutyDate;
     const wk = isoWeekKey(duty);
     if (!weekCount.has(wk)) weekCount.set(wk, new Map());
     const wc = weekCount.get(wk)!;
-
-    const row: ScheduleRow = {
-      dutyDate: duty,
-      publishDate: pub,
-      weekday: weekdayName(duty),
-      firstEditor: null,
-      secondEditor: null,
-      remark: null,
-    };
 
     // 一版 (若已被周五轮换填上)
     if (fridayFirst.has(duty)) {
@@ -133,9 +133,6 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
       } else {
         row.firstEditor = fe;
       }
-      if (row.firstEditor) {
-        assignEditor(count, personDuties, lastDuty, weekCount, row.firstEditor, 'first', duty, liuZhaoMax);
-      }
     } else {
       row.firstEditor = pickEditor({
         candidates: firstCapable,
@@ -144,10 +141,18 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
         cal, bothSet, weekday: row.weekday,
         exclude: firstCapable.filter(n => excludeSet.has(`${duty}|${n}`)),
       });
-      if (row.firstEditor) {
-        assignEditor(count, personDuties, lastDuty, weekCount, row.firstEditor, 'first', duty, liuZhaoMax);
-      }
     }
+    if (row.firstEditor) {
+      assignEditor(count, personDuties, lastDuty, weekCount, row.firstEditor, 'first', duty, liuZhaoMax);
+    }
+  }
+
+  // 阶段 2: 二版 (能看到完整一版结果)
+  for (const row of rows) {
+    const duty = row.dutyDate;
+    const wk = isoWeekKey(duty);
+    if (!weekCount.has(wk)) weekCount.set(wk, new Map());
+    const wc = weekCount.get(wk)!;
 
     row.secondEditor = pickEditor({
       candidates: secondCapable,
@@ -160,11 +165,9 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
     if (row.secondEditor) {
       assignEditor(count, personDuties, lastDuty, weekCount, row.secondEditor, 'second', duty, liuZhaoMax);
     }
-
-    rows.push(row);
   }
 
-  return rows.sort((a, b) => (a.dutyDate < b.dutyDate ? -1 : 1));
+  return rows;
 }
 function pickEditor(args: {
   candidates: string[];
@@ -182,11 +185,24 @@ function pickEditor(args: {
   bothSet: Set<string>;
   weekday: string;
 }): string | null {
-  // 刘钊硬上限永不放宽; 其余约束分级放宽以尽量均衡且不留空槽
+  // 刘钊为硬约束: 每周期 ≤ liuZhaoMax、每周 ≤ 1 版, 在候选过滤阶段即排除,
+  // 任何放宽阶段均不放宽。
+  // 单角色人员 (first_only/second_only, 如史光浩) 同样按理想配额硬约束:
+  // 其 total 只来自单一角色, 若不硬限会因 total 恒低被反复选中破坏均衡。
   const info = args.candidates
     .filter(n => !args.exclude.includes(n))
-    .filter(n => !(n === '刘钊' && (args.count.get(n)!.first + args.count.get(n)!.second) >= args.liuZhaoMax))
-    .map(n => {
+    .filter(n => {
+      if (n === '刘钊') return (
+        (args.count.get(n)!.first + args.count.get(n)!.second) < args.liuZhaoMax &&
+        (args.wc.get(n) ?? 0) < 1
+      );
+      if (!args.bothSet.has(n)) {
+        // 单角色人员 (second_only 等): 达到理想配额后不再参与
+        return (args.count.get(n)!.first + args.count.get(n)!.second) < args.ideal;
+      }
+      return true;
+    })
+    .map((n, seedIdx) => {
       const c = args.count.get(n)!;
       const total = c.first + c.second;
       const quota = n === '刘钊' ? args.liuZhaoMax : args.ideal;
@@ -215,26 +231,33 @@ function pickEditor(args: {
       // 连续同一星期值班惩罚
       const last = args.lastDuty.get(n);
       const sameWeekday = last ? weekdayName(last) === args.weekday : false;
-      return { n, total, weekOk, quotaOk, dutyOk, nearest, imbalance, sameWeekday, _rnd: Math.random() };
+      return { n, total, weekOk, quotaOk, dutyOk, nearest, imbalance, sameWeekday, first: c.first, second: c.second, seedIdx };
     });
-  // 分级: 全满足 → 放宽配额 → 放宽间隔 → 放宽周内 → 刘钊仍守周上限 → 兜底
+  // 软约束分级 (刘钊已在候选过滤中被硬约束, 超限者不在 info 中):
+  // 全满足 → 放宽间隔(保持配额) → 放宽配额(保持间隔) → 全放宽 → 兜底
+  // 注意: 配额(均衡)优先级高于间隔, 尽量让每人不超过理想配额
   const levels: ((f: typeof info[number]) => boolean)[] = [
     f => f.weekOk && f.quotaOk && f.dutyOk,
-    f => f.weekOk && f.dutyOk,
     f => f.weekOk && f.quotaOk,
+    f => f.weekOk && f.dutyOk,
     f => f.weekOk,
-    f => f.n !== '刘钊' || f.weekOk,
     () => true,
   ];
   for (const pred of levels) {
     const pool = info.filter(pred);
     if (pool.length) {
+      // 确定性排序 (无随机):
+      //  1. 总版数最少 (均衡主键)
+      //  2. 一/二版差更小者优先 (避免纯一版或纯二版)
+      //  3. 避免连续同星期 → 4. 名单顺序
+      // 注意: 不用 first/second 或 nearest 做 tie-break —— 前者会制造
+      // "一版少的人垄断二版"的马太效应, 后者会因间隔最大化把版数推给少数人;
+      // 间隔已由 dutyOk(minGap) 硬约束保证。
       pool.sort((a, b) =>
         a.total - b.total ||
-        (a.sameWeekday ? 1 : 0) - (b.sameWeekday ? 1 : 0) ||
         a.imbalance - b.imbalance ||
-        b.nearest - a.nearest ||
-        a._rnd - b._rnd
+        (a.sameWeekday ? 1 : 0) - (b.sameWeekday ? 1 : 0) ||
+        a.seedIdx - b.seedIdx
       );
       return pool[0].n;
     }

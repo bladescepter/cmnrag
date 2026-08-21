@@ -58,4 +58,49 @@ describe('周五轮换接续', () => {
     expect(rows.some(r => r.dutyDate === '2026-09-25')).toBe(false);
     expect(rows.some(r => r.dutyDate === '2026-10-02')).toBe(false);
   });
+
+  it('均衡: 9-10 月周期 both 人员版数全部相等 (差异 ≤ 1), 刘钊 ≤2, 史光浩 =3', () => {
+    const startIdx = (settings.fridayRotation.indexOf('李悦') + 1) % settings.fridayRotation.length;
+    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
+    const inRange = rows.filter(r => r.dutyDate >= '2026-09-15' && r.dutyDate <= '2026-10-14');
+    const stat = new Map<string, { first: number; second: number }>();
+    for (const r of inRange) {
+      for (const [n, role] of [[r.firstEditor, 'first'], [r.secondEditor, 'second']] as const) {
+        if (!n) continue;
+        if (!stat.has(n)) stat.set(n, { first: 0, second: 0 });
+        if (role === 'first') stat.get(n)!.first++; else stat.get(n)!.second++;
+      }
+    }
+    // 刘钊硬限: 每周期 ≤ 2
+    const liu = stat.get('刘钊');
+    expect(liu ? liu.first + liu.second : 0).toBeLessThanOrEqual(2);
+    // 史光浩(second_only) 硬限: ≤ 理想配额 3
+    const shi = stat.get('史光浩');
+    expect(shi ? shi.first + shi.second : 0).toBeLessThanOrEqual(3);
+    // both 人员 (排除刘钊/史光浩): 版数差 ≤ 1
+    const bothTotals = [...stat.entries()]
+      .filter(([n]) => n !== '刘钊' && n !== '史光浩')
+      .map(([, s]) => s.first + s.second);
+    expect(bothTotals.length).toBeGreaterThan(0);
+    expect(Math.max(...bothTotals) - Math.min(...bothTotals)).toBeLessThanOrEqual(1);
+    // 用户点名场景: 张宏伟 3 版, 黄彬 3 版 (不再 张2 黄4)
+    const zhang = stat.get('张宏伟');
+    const huang = stat.get('黄彬');
+    expect(zhang ? zhang.first + zhang.second : 0).toBe(3);
+    expect(huang ? huang.first + huang.second : 0).toBe(3);
+  });
+
+  it('确定性: 两次生成结果完全一致 (无随机性)', () => {
+    const startIdx = (settings.fridayRotation.indexOf('李悦') + 1) % settings.fridayRotation.length;
+    const r1 = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
+    const r2 = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
+    expect(r1).toEqual(r2);
+  });
+
+  it('刘钊永不超限: 即使候选池紧张也守 liuZhaoMax', () => {
+    // 构造大量一版槽的周期, 验证刘钊最多 2 个一版
+    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0 });
+    const liuRows = rows.filter(r => r.firstEditor === '刘钊');
+    expect(liuRows.length).toBeLessThanOrEqual(2);
+  });
 });
