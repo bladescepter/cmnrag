@@ -111,6 +111,25 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
     remark: null,
   }));
 
+  // 单角色人员 (first_only 等) 名额预约: 若其轮换位在周期后半,
+  // 则贪心名额会自然落到周期末尾与轮换位撞车 (如刘钊 10-08 + 10-09 连续)。
+  // 故将贪心名额预约到前 1/3 末的非轮换日, 使两个名额分散 (一前一后)。
+  // 轮换位在前半时无需预约 (贪心名额自然靠后)。
+  const reserveByDuty = new Map<string, string>(); // duty -> name
+  for (const n of firstCapable.filter(nm => !bothSet.has(nm))) {
+    let rotPos = -1;
+    for (let i = 0; i < rows.length; i++) {
+      if (fridayFirst.get(rows[i].dutyDate) === n) { rotPos = i; break; }
+    }
+    if (rotPos < 0 || rotPos < rows.length / 2) continue; // 无轮换位或轮换位在前半 → 不预约 (贪心名额自然靠后)
+    // 轮换位在后半: 从后往前找前 1/3 末的非轮换、非休假日预约
+    const limit = Math.min(Math.floor(rows.length / 3), rows.length - 1);
+    for (let i = limit; i >= 0; i--) {
+      const d = rows[i].dutyDate;
+      if (!fridayFirst.has(d) && !excludeSet.has(`${d}|${n}`)) { reserveByDuty.set(d, n); break; }
+    }
+  }
+
   // 阶段 1: 一版
   for (const row of rows) {
     const duty = row.dutyDate;
@@ -134,13 +153,19 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
         row.firstEditor = fe;
       }
     } else {
-      row.firstEditor = pickEditor({
-        candidates: firstCapable,
-        count, personDuties, lastDuty, wc, duty,
-        minGap, liuZhaoMax, ideal, role: 'first',
-        cal, bothSet, weekday: row.weekday,
-        exclude: firstCapable.filter(n => excludeSet.has(`${duty}|${n}`)),
-      });
+      // 单角色名额预约: 若本日被预约且预约人尚未被贪心选中, 优先给预约人
+      const reserved = reserveByDuty.get(duty);
+      if (reserved && (count.get(reserved)?.first ?? 0) === 0) {
+        row.firstEditor = reserved;
+      } else {
+        row.firstEditor = pickEditor({
+          candidates: firstCapable,
+          count, personDuties, lastDuty, wc, duty,
+          minGap, liuZhaoMax, ideal, role: 'first',
+          cal, bothSet, weekday: row.weekday,
+          exclude: firstCapable.filter(n => excludeSet.has(`${duty}|${n}`)),
+        });
+      }
     }
     if (row.firstEditor) {
       assignEditor(count, personDuties, lastDuty, weekCount, row.firstEditor, 'first', duty, liuZhaoMax);
@@ -222,7 +247,10 @@ function pickEditor(args: {
         if (nearest < args.minGap) dutyOk = false;
       }
       // 一版/二版数量均衡 (仅 both 编辑)
-      let imbalance = 0;
+      // 单角色人员 (first_only/second_only) 不参与: 设 +Infinity 使其同 total 时排在 both 之后,
+      // 避免其因 imbalance 恒为 0 而在周期开头被优先选中 (如刘钊第一天就占满名额),
+      // 让单角色名额自然落到周期中后段, 与轮换位名额时间上分散。
+      let imbalance = Number.POSITIVE_INFINITY;
       if (args.bothSet.has(n)) {
         const afterFirst = args.role === 'first' ? c.first + 1 : c.first;
         const afterSecond = args.role === 'second' ? c.second + 1 : c.second;

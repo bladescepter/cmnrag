@@ -103,4 +103,20 @@ describe('周五轮换接续', () => {
     const liuRows = rows.filter(r => r.firstEditor === '刘钊');
     expect(liuRows.length).toBeLessThanOrEqual(2);
   });
+
+  it('刘钊名额分散: 两个一版一个在前 1/3、一个在后 1/3, 不挤在开头或末尾', () => {
+    const startIdx = (settings.fridayRotation.indexOf('李悦') + 1) % settings.fridayRotation.length;
+    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
+    const inRange = rows.filter(r => r.dutyDate >= '2026-09-15' && r.dutyDate <= '2026-10-14');
+    const positions = inRange
+      .map((r, i) => (r.firstEditor === '刘钊' ? i : -1))
+      .filter(i => i >= 0);
+    expect(positions.length).toBe(2);
+    // 一个在前 1/3, 一个在后 1/3
+    const early = positions.some(i => i < inRange.length / 3);
+    const late = positions.some(i => i >= (inRange.length * 2) / 3);
+    expect(early && late).toBe(true);
+    // 不相邻 (间隔至少 3 行)
+    expect(Math.abs(positions[0] - positions[1])).toBeGreaterThanOrEqual(3);
+  });
 });
