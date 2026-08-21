@@ -7,6 +7,7 @@ import {
   addDays,
   generateSchedule,
   computeStats,
+  isFridayOrPreHoliday,
   type CalendarEntry,
   type EngineSettings,
   type ScheduleRow,
@@ -64,6 +65,43 @@ async function loadSettings(db: D1Database): Promise<EngineSettings> {
     fridayRotation: JSON.parse(row.friday_rotation_json),
     exclusions: JSON.parse(row.exclusions_json ?? '[]'),
   };
+}
+
+/** 与引擎一致的轮换名单 (过滤掉非值班人员) */
+function rotationList(settings: EngineSettings): string[] {
+  const active = settings.members.filter(m => m.role !== 'inactive');
+  const capable = new Set(
+    active
+      .filter(m => m.role === 'both' || m.role === 'first_only' || m.role === 'second_only')
+      .map(m => m.name)
+  );
+  return settings.fridayRotation.filter(n => capable.has(n));
+}
+
+/**
+ * 计算周五/节前轮换起点: 从历史排班中找到 duty_start 之前最近一个轮换值班日,
+ * 以其一版编辑在 rotation 中的位置 +1 作为下一周期轮换起点 (保证接续历史)。
+ * 若历史中无匹配 (未排过 / 人工填了非轮换名单的人), 回退到 0。
+ */
+async function computeFridayRotationStart(
+  db: D1Database,
+  dutyStart: string,
+  rotation: string[],
+  cal: CalendarIndex
+): Promise<number> {
+  if (rotation.length === 0) return 0;
+  const recent = await db.prepare(
+    `SELECT duty_date, first_editor FROM schedules
+     WHERE user_id = ? AND duty_date < ? AND first_editor IS NOT NULL AND first_editor <> ''
+     ORDER BY duty_date DESC LIMIT 120`
+  ).bind(GLOBAL_USER_ID, dutyStart).all<{ duty_date: string; first_editor: string }>();
+  for (const r of recent.results) {
+    // 只认轮换日 (周五/节前值班日), 非轮换日的编辑不消耗轮换指针
+    if (!isFridayOrPreHoliday(r.duty_date, cal)) continue;
+    const idx = rotation.indexOf(r.first_editor);
+    if (idx >= 0) return (idx + 1) % rotation.length;
+  }
+  return 0;
 }
 
 
@@ -205,7 +243,10 @@ scheduleRoutes.post('/generate', async c => {
   // 锚点 = 值班日的下一个见报日 (节假日/周末时值班日与见报日相隔多天, 不能用 +1 近似)
   let anchorDate = addDays(start, 1);
   for (let i = 0; i < 30 && !cal.isPublish(anchorDate); i++) anchorDate = addDays(anchorDate, 1);
-  const rows = generateSchedule({ anchorDate, entries, settings });
+  // 轮换接续: 起点 = 历史最近一个周五轮换位的下一人 (否则每次从 rotation[0] 重新开始)
+  const rotation = rotationList(settings);
+  const fridayRotationStart = await computeFridayRotationStart(c.env.PB_DB, start, rotation, cal);
+  const rows = generateSchedule({ anchorDate, entries, settings, fridayRotationStart });
 
   // 只保留周期范围内的行
   const filteredRows = rows.filter(r => r.dutyDate >= start && r.dutyDate <= end);

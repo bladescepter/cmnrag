@@ -18,6 +18,10 @@ export interface GenerateParams {
   anchorDate: string;
   entries: CalendarEntry[];
   settings: EngineSettings;
+  /** 周五/节前轮换起点 (索引), 默认 0。
+   *  生成新周期时应传入历史最后一位周五编辑的下一位置, 保证轮换接续,
+   *  否则每次生成都会从 fridayRotation[0] 重新开始。 */
+  fridayRotationStart?: number;
 }
 
 /**
@@ -83,7 +87,7 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
 
   const rows: ScheduleRow[] = [];
   const fridayFirst = new Map<string, string>(); // dutyDate -> 周五轮换编辑
-  let rotIdx = 0;
+  let rotIdx = params.fridayRotationStart ?? 0;
 
   // 先处理周五/节前值班日 (以值班日判定)
   for (const pub of publishDates) {

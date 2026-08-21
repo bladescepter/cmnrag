@@ -2,8 +2,10 @@
 """用视觉模型 mimo-v2.5 识别版面图 → 栏目条+文章归属，写入 column_test/YYYYMMDD_BC_vision.json
 
 用法: python scripts/col_vision_run.py YYYYMMDD [BC]   (BC 缺省 = 全部 01-04)
-默认【裁剪扫描模式】：每版按 3 列裁剪放大逐区识别（并行），输出前与 KNOWN_COLS 比对对齐；
-可选参数 --full：回退整版一次识别（旧模式，调试用）。
+默认【整版识别+局部放大】模式：先整版一次识别看全局结构（整版刊头/通栏栏目条/栏目布局），
+再对顶部通栏、中部上、中部下、版底 4 个横向条带（全宽不切列）裁剪放大并行细看，
+补齐整版看不清的小字号/浅底色栏目条；输出前与 KNOWN_COLS 比对对齐。
+可选参数：--crop 回退旧 3 列裁剪模式（调试用）；--full 回退整版一次识别（调试用）。
 
 视觉通道：xiaomi（api.xiaomimimo.com，XIAOMI_API_KEY），模型 mimo-v2.5
 """
@@ -227,6 +229,93 @@ def run_crop_mode(date_str, bc, page, img_path, titles):
     return [{"column": c, "articles": sorted(list(arts))} for c, arts in merged.items() if c]
 
 
+def run_whole_zoom_mode(date_str, bc, page, img_path, titles):
+    """整版识别 + 局部放大扫描（默认模式）：
+    Phase 1 整版一次识别——看全局结构（整版刊头、通栏栏目条、多栏目布局）；
+    Phase 2 对 4 个横向条带（顶部通栏/中部上/中部下/版底）裁剪放大并行细看，
+          补齐整版看不清的小字号/浅底色栏目条。
+    横向条带全宽不切列，横幅栏目条完整可见（旧 3 列纵切会把横幅切碎导致漏识）。
+    归属合并：局部细看结果优先（放大更可信），整版结果补漏（策划版整版刊头管辖全版）。
+    """
+    all_cols = []
+
+    # Phase 1: 整版一次识别
+    prompt_full = build_prompt(date_str, bc, page, titles)
+    img_b64 = b64_image(img_path)
+    content, err = _call_retry(img_b64, prompt_full)
+    if content:
+        data = parse_json(content)
+        if data is None:
+            print(f"  [整版] 无法解析 JSON: {content[:200]}")
+        else:
+            all_cols.extend(d for d in data if isinstance(d, dict))
+            cols = [normalize_col(d.get("column", "")) or d.get("column", "") for d in data if isinstance(d, dict) and d.get("column")]
+            print(f"  [整版] ok: {cols if cols else '无栏目条'}")
+    else:
+        print(f"  [整版] 视觉模型失败: {err}")
+
+    # Phase 2: 横向条带放大扫描（全宽，带重叠防条带边缘截断）
+    BANDS = [(0.00, 0.34, "顶部通栏"), (0.30, 0.62, "中部上"), (0.58, 0.84, "中部下"), (0.80, 1.00, "版底")]
+    jobs = []
+    for y0, y1, label in BANDS:
+        b64 = crop_b64(img_path, (0.0, y0, 1.0, y1))
+        jobs.append((label, b64, build_crop_prompt(date_str, page, titles, label)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        futs = {ex.submit(_call_retry, b, p): (label, b, p) for label, b, p in jobs}
+        for fut in concurrent.futures.as_completed(futs):
+            label = futs[fut][0]
+            content, err = fut.result()
+            if not content:
+                print(f"  [{label}] 视觉模型失败: {err}")
+                continue
+            data = parse_json(content)
+            if data is None:
+                print(f"  [{label}] 无法解析 JSON: {content[:200]}")
+                continue
+            all_cols.extend(d for d in data if isinstance(d, dict))
+            cols = [normalize_col(d.get("column", "")) or d.get("column", "") for d in data if isinstance(d, dict) and d.get("column")]
+            print(f"  [{label}] ok: {cols if cols else '无栏目条'}")
+
+    # 汇总合并：局部（条带）结果优先，整版补漏；栏目名对齐 KNOWN_COLS
+    band_cols = [d for d in all_cols if d.get("column")]
+    article2col = {}
+    merged = {}
+    dropped = []
+    for d in band_cols:
+        col = normalize_col(d.get("column"))
+        if not col:
+            raw = (d.get("column") or "").strip()
+            if raw:
+                dropped.append(raw)
+            continue
+        for t in d.get("articles", []):
+            ts = str(t).strip()
+            merged.setdefault(col, set()).add(ts)
+            article2col.setdefault(ts, col)
+    if dropped:
+        print(f"  [汇总] 丢弃库外栏目名: {sorted(set(dropped))}")
+    return [{"column": c, "articles": sorted(list(arts))} for c, arts in merged.items() if c]
+
+
+def write_vision(date_str, bc, data, titles, mode_label):
+    """写 vision.json + 覆盖统计打印（三种模式共用）"""
+    out_path = os.path.join(OUT_DIR, f"{date_str}_{bc}_vision.json")
+    json.dump(data, open(out_path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    print(f"  [ok] {mode_label}已写入 {out_path}")
+    covered = set()
+    for col_data in data:
+        print(f"    「{col_data.get('column', '')}」: {len(col_data.get('articles', []))} 篇")
+        covered.update(str(t) for t in col_data.get("articles", []))
+    # 信息性覆盖统计（不警报）：常规版未覆盖属正常（空栏目），策划版才需人工核对
+    uncovered = [t for t in titles
+                 if not any(str(t) in c or c in str(t) for c in covered)]
+    print(f"  [统计] 栏目覆盖 {len(titles)-len(uncovered)}/{len(titles)} 篇")
+    if uncovered:
+        print(f"  未覆盖（常规版空栏目正常，策划版请人工核对）：")
+        for t in uncovered:
+            print(f"    - {t}")
+
+
 def build_prompt(date_str, bc, page_label, titles):
     cols_text = ", ".join(KNOWN_COLS)
     titles_text = "\n".join(f"{i+1}. {t}" for i, t in enumerate(titles))
@@ -237,7 +326,7 @@ def build_prompt(date_str, bc, page_label, titles):
         f"已知栏目列表（识别栏目条时只能从这些名字中选择，尽量精确匹配）：\n"
         f"{cols_text}\n\n"
         f"任务：\n"
-        f"1. 仔细观察版面图中的\"栏目条\"——即带底色、线框或特殊样式、位于整版或一组文章上方的栏目标识。注意：报头、导读、刊名不是栏目条；文章标题、引题、副题不是栏目条。\n"
+        f"1. 仔细观察版面图中的\"栏目条\"——即带底色、线框或特殊样式、位于整版或一组文章上方的栏目标识。注意：不设醒目度门槛，小字号/浅底色/细线框的短标签都算；报头、导读、刊名不是栏目条；文章标题、引题、副题不是栏目条。\n"
         f"2. 如果整版顶部只有一个大的统一栏目条，本版所有文章都属于该栏目。\n"
         f"3. 将每篇文章（按标题清单逐条）归属到它所在栏目条对应的栏目；如果某篇文章上方没有栏目条，则归到离它最近的栏目条，或归空（不属于任何栏目）。\n"
         f"4. 只输出 JSON 数组，每项为 {{\"column\": \"栏目名\", \"articles\": [\"标题原文1\", \"标题原文2\"]}}，标题必须与清单原文一致。没有栏目条时输出空数组 []。不要输出任何解释。"
@@ -252,10 +341,12 @@ def main():
         print("用法: python3 col_vision_run.py YYYYMMDD [BC]")
         sys.exit(1)
     date_str = sys.argv[1]
-    # 默认裁剪扫描模式（与 KNOWN_COLS 比对对齐）；--full 回退整版一次识别；--crop 为旧参数兼容
-    crop_mode = "--full" not in sys.argv
+    # 默认【整版识别+局部放大】模式；--crop 回退旧 3 列裁剪模式（调试用）；--full 回退整版一次识别（调试用）
+    mode = "whole_zoom"
     if "--crop" in sys.argv:
-        crop_mode = True
+        mode = "crop"
+    elif "--full" in sys.argv:
+        mode = "full"
     bcs = [a for a in sys.argv[2:] if a in PAGE_LABELS] or list(PAGE_LABELS)
     os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -274,23 +365,14 @@ def main():
         prompt = build_prompt(date_str, bc, page, titles)
         img_b64 = b64_image(img_path)
 
-        if crop_mode:
-            data = run_crop_mode(date_str, bc, page, img_path, titles)
-            out_path = os.path.join(OUT_DIR, f"{date_str}_{bc}_vision.json")
-            json.dump(data, open(out_path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
-            print(f"  [ok] 裁剪扫描已写入 {out_path}")
-            covered = set()
-            for col_data in data:
-                print(f"    「{col_data.get('column', '')}」: {len(col_data.get('articles', []))} 篇")
-                covered.update(str(t) for t in col_data.get("articles", []))
-            # 信息性覆盖统计（不警报）：常规版未覆盖属正常（空栏目），策划版才需人工核对
-            uncovered = [t for t in titles
-                         if not any(str(t) in c or c in str(t) for c in covered)]
-            print(f"  [统计] 栏目覆盖 {len(titles)-len(uncovered)}/{len(titles)} 篇")
-            if uncovered:
-                print(f"  未覆盖（常规版空栏目正常，策划版请人工核对）：")
-                for t in uncovered:
-                    print(f"    - {t}")
+        if mode in ("crop", "whole_zoom"):
+            if mode == "crop":
+                data = run_crop_mode(date_str, bc, page, img_path, titles)
+                mode_label = "裁剪扫描"
+            else:
+                data = run_whole_zoom_mode(date_str, bc, page, img_path, titles)
+                mode_label = "整版+局部放大"
+            write_vision(date_str, bc, data, titles, mode_label)
             continue
 
         err, content = None, "no attempt"
