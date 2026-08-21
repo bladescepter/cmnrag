@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
+import { RANGE_YEARS } from '../range';
 import type { PeriodStats } from '../api';
 
 interface Cycle {
@@ -30,25 +31,29 @@ export default function GeneratePanel({
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [selectedCycleIdx, setSelectedCycleIdx] = useState(0);
 
-  // 加载周期列表 (后端统一计算, 避免前后端逻辑重复)
+  // 加载周期列表 (后端统一计算, 避免前后端逻辑重复; 跨年合并两个年份的周期)
   useEffect(() => {
-    api.getCalendarCycles(2026).then(r => {
-      const computed: Cycle[] = r.cycles.map(c => {
-        const startMonth = Number(c.publishStart.slice(5, 7));
-        const endMonth = Number(c.publishEnd.slice(5, 7));
-        return {
-          label: `${startMonth}-${endMonth}月 (${c.publishStart.slice(5)} ~ ${c.publishEnd.slice(5)}见报)`,
-          start: c.dutyStart,
-          end: c.dutyEnd,
-          publishStart: c.publishStart,
-          publishEnd: c.publishEnd,
-        };
-      });
-      setCycles(computed);
-      if (computed.length > 0) {
-        onFilterChange({ start: computed[0].start, end: computed[0].end });
-      }
-    }).catch(() => {});
+    Promise.all(RANGE_YEARS.map(y => api.getCalendarCycles(y)))
+      .then(results => {
+        const computed: Cycle[] = results.flatMap(r =>
+          r.cycles.map(c => {
+            const startMonth = Number(c.publishStart.slice(5, 7));
+            const endMonth = Number(c.publishEnd.slice(5, 7));
+            return {
+              label: `${c.publishStart.slice(0, 4)} ${startMonth}-${endMonth}月 (${c.publishStart.slice(5)} ~ ${c.publishEnd.slice(5)}见报)`,
+              start: c.dutyStart,
+              end: c.dutyEnd,
+              publishStart: c.publishStart,
+              publishEnd: c.publishEnd,
+            };
+          })
+        );
+        setCycles(computed);
+        if (computed.length > 0) {
+          onFilterChange({ start: computed[0].start, end: computed[0].end });
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // 范围内统计

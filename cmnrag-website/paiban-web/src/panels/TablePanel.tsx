@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../api';
+import { RANGE_START, RANGE_END, RANGE_YEARS, RANGE_LABEL } from '../range';
 import type { ScheduleRowDB, PeriodStats, Member, CalendarData } from '../api';
 
 /** 一行显示数据 — 覆盖全年每一天, 含值班日/周末/休刊 */
@@ -51,7 +52,17 @@ export default function TablePanel({
   useEffect(() => {
     load();
     api.getSettings().then(s => setMembers(s.members ?? [])).catch(() => {});
-    api.getCalendar(2026).then(setCalendar).catch(() => {});
+    // 跨年合并: 每个范围年份取一次日历, 合并见报日/休刊集合
+    Promise.all(RANGE_YEARS.map(y => api.getCalendar(y)))
+      .then(list => {
+        if (list.length === 0) return;
+        setCalendar({
+          year: RANGE_YEARS[RANGE_YEARS.length - 1],
+          publishDates: [...new Set(list.flatMap(c => c.publishDates))].sort(),
+          holidays: [...new Set(list.flatMap(c => c.holidays))].sort(),
+        });
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -91,8 +102,10 @@ export default function TablePanel({
     const holidaySet = new Set(calendar.holidays);
 
     const allDays: DisplayRow[] = [];
-    const start = new Date(Date.UTC(2026, 0, 1));
-    const end = new Date(Date.UTC(2026, 11, 31));
+    const [sy, sm, sd] = RANGE_START.split('-').map(Number);
+    const [ey, em, ed] = RANGE_END.split('-').map(Number);
+    const start = new Date(Date.UTC(sy, sm - 1, sd));
+    const end = new Date(Date.UTC(ey, em - 1, ed));
 
     for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
       const dateStr = d.toISOString().slice(0, 10);
@@ -212,7 +225,7 @@ export default function TablePanel({
   return (
     <div>
       <h3 style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-        排班表 2026
+        排班表 {RANGE_LABEL}
         {flash && <span style={{ fontSize: 12, color: '#34c759', fontWeight: 400 }}>✓ 已更新</span>}
       </h3>
 

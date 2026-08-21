@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import { RANGE_START, RANGE_END, RANGE_LABEL } from './range';
 import TablePanel from './panels/TablePanel';
 import GeneratePanel from './panels/GeneratePanel';
 import SettingsPanel from './panels/SettingsPanel';
@@ -10,8 +11,8 @@ export default function App() {
   const [scheduleVersion, setScheduleVersion] = useState(0);
   const [highlightRange, setHighlightRange] = useState<{ start: string; end: string } | null>(null);
   const [filterRange, setFilterRange] = useState<{ start: string; end: string }>({
-    start: '2026-01-01',
-    end: '2026-12-31',
+    start: RANGE_START,
+    end: RANGE_END,
   });
   const [scrollKey, setScrollKey] = useState(0);
 
@@ -52,7 +53,7 @@ export default function App() {
             filterRange={filterRange}
             onFilterChange={setFilterRange}
             onShowAll={() => {
-              setFilterRange({ start: '2026-01-01', end: '2026-12-31' });
+              setFilterRange({ start: RANGE_START, end: RANGE_END });
               setScrollKey(k => k + 1);
             }}
             onRefresh={() => setScheduleVersion(v => v + 1)}
