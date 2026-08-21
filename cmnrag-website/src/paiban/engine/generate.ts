@@ -212,21 +212,14 @@ function pickEditor(args: {
 }): string | null {
   // 刘钊为硬约束: 每周期 ≤ liuZhaoMax、每周 ≤ 1 版, 在候选过滤阶段即排除,
   // 任何放宽阶段均不放宽。
-  // 单角色人员 (first_only/second_only, 如史光浩) 同样按理想配额硬约束:
-  // 其 total 只来自单一角色, 若不硬限会因 total 恒低被反复选中破坏均衡。
+  // 其余人员 (含史光浩等单角色) 不设硬上限: 均衡靠排序主键 (总版数最少优先)
+  // + 分级放宽自然达成, 配额 (ideal) 仅是软偏好, 人手紧时允许超配。
   const info = args.candidates
     .filter(n => !args.exclude.includes(n))
-    .filter(n => {
-      if (n === '刘钊') return (
-        (args.count.get(n)!.first + args.count.get(n)!.second) < args.liuZhaoMax &&
-        (args.wc.get(n) ?? 0) < 1
-      );
-      if (!args.bothSet.has(n)) {
-        // 单角色人员 (second_only 等): 达到理想配额后不再参与
-        return (args.count.get(n)!.first + args.count.get(n)!.second) < args.ideal;
-      }
-      return true;
-    })
+    .filter(n => n !== '刘钊' || (
+      (args.count.get(n)!.first + args.count.get(n)!.second) < args.liuZhaoMax &&
+      (args.wc.get(n) ?? 0) < 1
+    ))
     .map((n, seedIdx) => {
       const c = args.count.get(n)!;
       const total = c.first + c.second;

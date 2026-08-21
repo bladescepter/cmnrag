@@ -59,7 +59,7 @@ describe('周五轮换接续', () => {
     expect(rows.some(r => r.dutyDate === '2026-10-02')).toBe(false);
   });
 
-  it('均衡: 9-10 月周期 both 人员版数全部相等 (差异 ≤ 1), 刘钊 ≤2, 史光浩 =3', () => {
+  it('均衡: 9-10 月周期 both 人员版数全部相等 (差异 ≤ 1), 刘钊 ≤2', () => {
     const startIdx = (settings.fridayRotation.indexOf('李悦') + 1) % settings.fridayRotation.length;
     const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
     const inRange = rows.filter(r => r.dutyDate >= '2026-09-15' && r.dutyDate <= '2026-10-14');
@@ -74,9 +74,6 @@ describe('周五轮换接续', () => {
     // 刘钊硬限: 每周期 ≤ 2
     const liu = stat.get('刘钊');
     expect(liu ? liu.first + liu.second : 0).toBeLessThanOrEqual(2);
-    // 史光浩(second_only) 硬限: ≤ 理想配额 3
-    const shi = stat.get('史光浩');
-    expect(shi ? shi.first + shi.second : 0).toBeLessThanOrEqual(3);
     // both 人员 (排除刘钊/史光浩): 版数差 ≤ 1
     const bothTotals = [...stat.entries()]
       .filter(([n]) => n !== '刘钊' && n !== '史光浩')
@@ -88,6 +85,17 @@ describe('周五轮换接续', () => {
     const huang = stat.get('黄彬');
     expect(zhang ? zhang.first + zhang.second : 0).toBe(3);
     expect(huang ? huang.first + huang.second : 0).toBe(3);
+  });
+
+  it('史光浩无硬上限: 配额随周期见报日数自适应 (9-10月3个, 见报日多的周期自动增多)', () => {
+    // 9-10 月: 16 见报日 → 史光浩自然 3 个二版 (软机制, 非硬限)
+    const rows1 = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0 });
+    const shi1 = rows1.filter(r => r.secondEditor === '史光浩').length;
+    expect(shi1).toBe(3);
+    // 1-2 月周期: 见报日更多 → ideal 升到 4, 史光浩 4 个二版 (无硬限 3)
+    const rows2 = generateSchedule({ anchorDate: '2026-01-18', entries, settings, fridayRotationStart: 0 });
+    const shi2 = rows2.filter(r => r.secondEditor === '史光浩').length;
+    expect(shi2).toBeGreaterThanOrEqual(4);
   });
 
   it('确定性: 两次生成结果完全一致 (无随机性)', () => {
