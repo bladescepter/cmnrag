@@ -22,6 +22,23 @@ interface DisplayRow {
 
 const WEEKDAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
+/** 锁形图标 (closed=实心已锁, open=空心未锁) */
+function LockIcon({ open = false }: { open?: boolean }) {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" aria-hidden="true">
+      <rect
+        x="4" y="11" width="16" height="10" rx="2"
+        fill={open ? 'none' : 'currentColor'}
+        stroke="currentColor" strokeWidth="2.5"
+      />
+      <path
+        d={open ? 'M8 11V7a4 4 0 0 1 7.6-1.2' : 'M8 11V7a4 4 0 0 1 8 0v4'}
+        fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function getWeekday(dateStr: string): string {
   return WEEKDAY_NAMES[new Date(dateStr + 'T00:00:00Z').getUTCDay()];
 }
@@ -225,6 +242,7 @@ export default function TablePanel({
     load();
   };
 
+  // 锁定钮: 未锁定格悬停才浮现, 已锁定格常驻小锁点 (视觉噪音 ∝ 锁定数)
   const lockBtn = (row: DisplayRow, side: 'first' | 'second') => {
     const locked = side === 'first' ? row.lockedFirst : row.lockedSecond;
     return (
@@ -232,10 +250,10 @@ export default function TablePanel({
         type="button"
         className={locked ? 'cell-lock locked' : 'cell-lock'}
         onClick={() => toggleLock(row, side)}
-        title={locked ? '已锁定，生成排班时保留' : '点击锁定该格，生成排班时保留'}
+        title={locked ? '已锁定，生成排班时保留；点击解锁' : '锁定该格，生成排班时保留'}
         disabled={row.scheduleId === null}
       >
-        {locked ? '🔒' : '🔓'}
+        <LockIcon open={!locked} />
       </button>
     );
   };
@@ -248,6 +266,7 @@ export default function TablePanel({
         排班表 {RANGE_LABEL}
         {flash && <span style={{ fontSize: 12, color: '#34c759', fontWeight: 400 }}>✓ 已更新</span>}
       </h3>
+      <p className="lock-hint">悬停编辑格浮现小锁，点击锁定；锁定格生成排班时保留原编辑</p>
 
 
       <table className="schedule">
@@ -270,14 +289,13 @@ export default function TablePanel({
                 r.isWeekend ? 'row-weekend' : '',
                 r.isHoliday ? 'row-holiday' : '',
                 highlightRange && r.date >= highlightRange.start && r.date <= highlightRange.end ? 'row-highlight' : '',
-                r.lockedFirst || r.lockedSecond ? 'row-locked' : '',
               ].filter(Boolean).join(' ')}
             >
               <td>{r.date}</td>
               <td>{r.weekday}</td>
               {r.isDutyDay || r.scheduleId !== null ? (
                 <>
-                  <td>
+                  <td className={(r.isDutyDay || r.scheduleId !== null) && r.lockedFirst ? 'cell-locked' : ''}>
                     <span className="cell-editor">
                       <select
                         value={r.firstEditor ?? ''}
@@ -289,7 +307,7 @@ export default function TablePanel({
                       {lockBtn(r, 'first')}
                     </span>
                   </td>
-                  <td>
+                  <td className={(r.isDutyDay || r.scheduleId !== null) && r.lockedSecond ? 'cell-locked' : ''}>
                     <span className="cell-editor">
                       <select
                         value={r.secondEditor ?? ''}

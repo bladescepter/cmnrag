@@ -83,12 +83,23 @@ table.schedule td input:focus, table.schedule td select:focus { outline: 2px sol
 .row-holiday { background: #fff3e0; }
 .non-duty-cell { color: #aaa; }
 table.schedule tr.row-highlight { background: #e8f5e9; }
-/* 有任一格子锁定的行: 轻微金色底提示 */
-table.schedule tr.row-locked { background: #fefbe8; }
-/* 格子锁定: 编辑下拉框 + 紧凑小锁钮并排 */
+/* 锁定态: 只染锁定那一格 (淡唬珀底 + 左侧唬珀竖条), 不再整行高亮 */
+table.schedule td.cell-locked { background: #fdf6e3; box-shadow: inset 2px 0 0 #e0a800; }
+/* 格子锁定: 编辑下拉框 + 小锁钮并排; 未锁定时锁钮隐藏, 悬停单元格才浮现 */
 .cell-editor { display: inline-flex; align-items: center; gap: 3px; }
 .cell-editor select { padding: 1px 2px; }
-.cell-lock { border: none; background: none; cursor: pointer; font-size: 11px; line-height: 1; padding: 1px 2px; opacity: 0.35; }
-.cell-lock:hover { opacity: 0.9; }
-.cell-lock.locked { opacity: 1; }
-.cell-lock:disabled { opacity: 0.15; cursor: default; }
+.cell-lock {
+  border: none; background: none; cursor: pointer;
+  width: 14px; height: 14px; padding: 0; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #b8860b; opacity: 0; pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+.cell-editor:hover .cell-lock { opacity: 0.35; pointer-events: auto; }
+.cell-lock:hover { opacity: 0.9 !important; }
+/* 已锁定格: 锁点常驻可见, 悬停变实便于点击解锁 */
+.cell-lock.locked { opacity: 0.55; pointer-events: auto; }
+.cell-lock.locked:hover { opacity: 1; }
+.cell-lock:disabled { opacity: 0.15 !important; pointer-events: none; cursor: default; }
+/* 表头下方操作提示 */
+.lock-hint { margin: 0 0 8px; font-size: 12px; color: #999; }
