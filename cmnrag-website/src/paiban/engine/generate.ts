@@ -25,6 +25,9 @@ export interface GenerateParams {
   /** 已锁定的格子: dutyDate -> 该日锁定的编辑 (一版/二版可分别锁定)。
    *  锁定的编辑计入版数统计且分配时直接保留, 未锁定的格子正常分配。 */
   lockedCells?: Map<string, { first?: string; second?: string }>;
+  /** 随机源 (默认 Math.random): 仅用于同分候选间的随机选择,
+   *  均衡/间隔等约束排序键不受影响。传 () => 0 可得到完全确定的结果。 */
+  rng?: () => number;
 }
 
 /**
@@ -43,6 +46,7 @@ export interface GenerateParams {
  */
 export function generateSchedule(params: GenerateParams): ScheduleRow[] {
   const { anchorDate, entries, settings } = params;
+  const rng = params.rng ?? Math.random;
   const cal = new CalendarIndex(entries);
   const cycle = computeCycle(anchorDate, cal);
   const publishDates = cyclePublishDates(cycle, cal);
@@ -162,7 +166,7 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
         row.firstEditor = pickEditor({
           candidates: firstCapable,
           count, personDuties, lastDuty, wc, duty,
-          minGap, liuZhaoMax, ideal, role: 'first',
+          minGap, liuZhaoMax, ideal, role: 'first', rng,
           cal, bothSet, weekday: row.weekday,
           exclude: firstCapable.filter(n => excludeSet.has(`${duty}|${n}`)),
         });
@@ -178,7 +182,7 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
         row.firstEditor = pickEditor({
           candidates: firstCapable,
           count, personDuties, lastDuty, wc, duty,
-          minGap, liuZhaoMax, ideal, role: 'first',
+          minGap, liuZhaoMax, ideal, role: 'first', rng,
           cal, bothSet, weekday: row.weekday,
           exclude: firstCapable.filter(n => excludeSet.has(`${duty}|${n}`)),
         });
@@ -204,7 +208,7 @@ export function generateSchedule(params: GenerateParams): ScheduleRow[] {
       row.secondEditor = pickEditor({
         candidates: secondCapable,
         count, personDuties, lastDuty, wc, duty,
-        minGap, liuZhaoMax, ideal, role: 'second',
+        minGap, liuZhaoMax, ideal, role: 'second', rng,
         cal, bothSet, weekday: row.weekday,
         exclude: secondCapable.filter(n => excludeSet.has(`${duty}|${n}`))
           .concat(row.firstEditor ? [row.firstEditor] : []),
@@ -232,6 +236,7 @@ function pickEditor(args: {
   cal: CalendarIndex;
   bothSet: Set<string>;
   weekday: string;
+  rng: () => number;
 }): string | null {
   // 刘钊为硬约束: 每周期 ≤ liuZhaoMax、每周 ≤ 1 版, 在候选过滤阶段即排除,
   // 任何放宽阶段均不放宽。
@@ -303,7 +308,15 @@ function pickEditor(args: {
         (a.sameWeekday ? 1 : 0) - (b.sameWeekday ? 1 : 0) ||
         a.seedIdx - b.seedIdx
       );
-      return pool[0].n;
+      // 同分随机: 在排序键 (total/imbalance/sameWeekday) 完全相同的最优组内
+      // 随机取一人 —— 约束与均衡不变, 但多次生成可探索不同方案。
+      const best = pool[0];
+      const tied = pool.filter(f =>
+        f.total === best.total &&
+        f.imbalance === best.imbalance &&
+        f.sameWeekday === best.sameWeekday
+      );
+      return tied[Math.floor(args.rng() * tied.length) % tied.length].n;
     }
   }
   return null;

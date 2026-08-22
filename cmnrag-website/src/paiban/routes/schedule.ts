@@ -167,14 +167,39 @@ scheduleRoutes.delete('/:id', async c => {
   return c.json({ ok: true });
 });
 
-/** 清空指定日期范围内的排班 (保留任一格子被锁定的行) */
+/** 清空指定日期范围内的排班 (只保留锁定的格子: 锁定侧编辑值+锁定标记, 其余全部清空) */
 scheduleRoutes.delete('/range/:start/:end', async c => {
   const start = c.req.param('start');
   const end = c.req.param('end');
-  await c.env.PB_DB.prepare(
-    `DELETE FROM schedules WHERE user_id = ? AND locked_first = 0 AND locked_second = 0 AND duty_date >= ? AND duty_date <= ?`
-  ).bind(GLOBAL_USER_ID, start, end).run();
-  return c.json({ ok: true });
+  const locked = await c.env.PB_DB.prepare(
+    `SELECT duty_date, publish_date, weekday, first_editor, second_editor, locked_first, locked_second
+     FROM schedules WHERE user_id = ? AND duty_date >= ? AND duty_date <= ?
+       AND (locked_first = 1 OR locked_second = 1)`
+  ).bind(GLOBAL_USER_ID, start, end).all<{
+    duty_date: string; publish_date: string; weekday: string;
+    first_editor: string | null; second_editor: string | null;
+    locked_first: number; locked_second: number;
+  }>();
+  const stmts: D1PreparedStatement[] = [
+    c.env.PB_DB.prepare(
+      `DELETE FROM schedules WHERE user_id = ? AND duty_date >= ? AND duty_date <= ?`
+    ).bind(GLOBAL_USER_ID, start, end),
+  ];
+  for (const r of locked.results) {
+    stmts.push(
+      c.env.PB_DB.prepare(
+        `INSERT INTO schedules (user_id, duty_date, publish_date, weekday, first_editor, second_editor, remark, locked_first, locked_second)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`
+      ).bind(
+        GLOBAL_USER_ID, r.duty_date, r.publish_date, r.weekday,
+        r.locked_first === 1 ? r.first_editor : null,
+        r.locked_second === 1 ? r.second_editor : null,
+        r.locked_first, r.locked_second
+      )
+    );
+  }
+  await c.env.PB_DB.batch(stmts);
+  return c.json({ ok: true, keptLockedCells: locked.results.length });
 });
 
 /** 锁定/解锁一行 (一版/二版格子可分别锁定, 也可同时) */
