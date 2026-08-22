@@ -28,7 +28,7 @@ describe('周五轮换接续', () => {
   const cal = new CalendarIndex(entries);
 
   it('fridayRotationStart 缺失时从 rotation[0] 开始 (历史行为)', () => {
-    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings });
+    const rows = generateSchedule({ rng: () => 0, anchorDate: '2026-09-20', entries, settings });
     const f918 = rows.find(r => r.dutyDate === '2026-09-18');
     // 未接续: 起点 = 黄彬
     expect(f918?.firstEditor).toBe('黄彬');
@@ -38,14 +38,14 @@ describe('周五轮换接续', () => {
     // 历史: 9-11 周五 一版 = 李悦 → 起点 = 李悦后一位 = 张宏伟
     const startIdx = (settings.fridayRotation.indexOf('李悦') + 1) % settings.fridayRotation.length;
     expect(settings.fridayRotation[startIdx]).toBe('张宏伟');
-    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
+    const rows = generateSchedule({ rng: () => 0, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
     const f918 = rows.find(r => r.dutyDate === '2026-09-18');
     expect(f918?.firstEditor).toBe('张宏伟');
   });
 
   it('轮换位顺序正确: 9-18 张宏伟 → 9-24 赵宁(中秋前) → 9-30 王畅(国庆前) → 10-09 刘钊', () => {
     const startIdx = (settings.fridayRotation.indexOf('李悦') + 1) % settings.fridayRotation.length;
-    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
+    const rows = generateSchedule({ rng: () => 0, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
     const byDate = (d: string) => rows.find(r => r.dutyDate === d);
     expect(byDate('2026-09-18')?.firstEditor).toBe('张宏伟');
     expect(byDate('2026-09-24')?.firstEditor).toBe('赵宁');
@@ -54,14 +54,14 @@ describe('周五轮换接续', () => {
   });
 
   it('休刊日不生成值班行 (9-25 中秋, 10-02 国庆)', () => {
-    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0 });
+    const rows = generateSchedule({ rng: () => 0, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0 });
     expect(rows.some(r => r.dutyDate === '2026-09-25')).toBe(false);
     expect(rows.some(r => r.dutyDate === '2026-10-02')).toBe(false);
   });
 
   it('均衡: 9-10 月周期 both 人员版数全部相等 (差异 ≤ 1), 刘钊 ≤2', () => {
     const startIdx = (settings.fridayRotation.indexOf('李悦') + 1) % settings.fridayRotation.length;
-    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
+    const rows = generateSchedule({ rng: () => 0, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
     const inRange = rows.filter(r => r.dutyDate >= '2026-09-15' && r.dutyDate <= '2026-10-14');
     const stat = new Map<string, { first: number; second: number }>();
     for (const r of inRange) {
@@ -89,32 +89,32 @@ describe('周五轮换接续', () => {
 
   it('史光浩无硬上限: 配额随周期见报日数自适应 (9-10月3个, 见报日多的周期自动增多)', () => {
     // 9-10 月: 16 见报日 → 史光浩自然 3 个二版 (软机制, 非硬限)
-    const rows1 = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0 });
+    const rows1 = generateSchedule({ rng: () => 0, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0 });
     const shi1 = rows1.filter(r => r.secondEditor === '史光浩').length;
     expect(shi1).toBe(3);
     // 1-2 月周期: 见报日更多 → ideal 升到 4, 史光浩 4 个二版 (无硬限 3)
-    const rows2 = generateSchedule({ anchorDate: '2026-01-18', entries, settings, fridayRotationStart: 0 });
+    const rows2 = generateSchedule({ rng: () => 0, anchorDate: '2026-01-18', entries, settings, fridayRotationStart: 0 });
     const shi2 = rows2.filter(r => r.secondEditor === '史光浩').length;
     expect(shi2).toBeGreaterThanOrEqual(4);
   });
 
   it('确定性: 两次生成结果完全一致 (无随机性)', () => {
     const startIdx = (settings.fridayRotation.indexOf('李悦') + 1) % settings.fridayRotation.length;
-    const r1 = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
-    const r2 = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
+    const r1 = generateSchedule({ rng: () => 0, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
+    const r2 = generateSchedule({ rng: () => 0, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
     expect(r1).toEqual(r2);
   });
 
   it('刘钊永不超限: 即使候选池紧张也守 liuZhaoMax', () => {
     // 构造大量一版槽的周期, 验证刘钊最多 2 个一版
-    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0 });
+    const rows = generateSchedule({ rng: () => 0, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0 });
     const liuRows = rows.filter(r => r.firstEditor === '刘钊');
     expect(liuRows.length).toBeLessThanOrEqual(2);
   });
 
   it('刘钊名额分散: 两个一版一个在前 1/3、一个在后 1/3, 不挤在开头或末尾', () => {
     const startIdx = (settings.fridayRotation.indexOf('李悦') + 1) % settings.fridayRotation.length;
-    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
+    const rows = generateSchedule({ rng: () => 0, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: startIdx });
     const inRange = rows.filter(r => r.dutyDate >= '2026-09-15' && r.dutyDate <= '2026-10-14');
     const positions = inRange
       .map((r, i) => (r.firstEditor === '刘钊' ? i : -1))
@@ -131,7 +131,7 @@ describe('周五轮换接续', () => {
   it('锁定格子: 一版锁定时保留锁定值, 未锁定格正常分配', () => {
     const locked = new Map<string, { first?: string; second?: string }>();
     locked.set('2026-09-18', { first: '黄彬' }); // 锁定 9-18 一版为黄彬 (原轮换位是张宏伟)
-    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0, lockedCells: locked });
+    const rows = generateSchedule({ rng: () => 0, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0, lockedCells: locked });
     const r = rows.find(x => x.dutyDate === '2026-09-18');
     expect(r?.firstEditor).toBe('黄彬');
     // 其余行仍生成
@@ -143,7 +143,7 @@ describe('周五轮换接续', () => {
     const locked = new Map<string, { first?: string; second?: string }>();
     locked.set('2026-09-18', { first: '黄彬' });
     locked.set('2026-09-24', { first: '黄彬' });
-    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0, lockedCells: locked });
+    const rows = generateSchedule({ rng: () => 0, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0, lockedCells: locked });
     const huang = rows.filter(r => r.firstEditor === '黄彬').length;
     // 锁定 2 个一版 + 贪心至多再补 1 个, 总一版 ≤ 3 (均衡约束下不会无限制堆)
     expect(huang).toBeLessThanOrEqual(3);
@@ -153,8 +153,43 @@ describe('周五轮换接续', () => {
   it('锁定二版格子: 保留锁定值且不与一版冲突', () => {
     const locked = new Map<string, { first?: string; second?: string }>();
     locked.set('2026-09-18', { second: '郭笑羽' });
-    const rows = generateSchedule({ anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0, lockedCells: locked });
+    const rows = generateSchedule({ rng: () => 0, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0, lockedCells: locked });
     const r = rows.find(x => x.dutyDate === '2026-09-18');
     expect(r?.secondEditor).toBe('郭笑羽');
+  });
+});
+
+describe('生成随机性 (同分候选间随机, 约束与均衡不变)', () => {
+  const serialize = (rows: { dutyDate: string; firstEditor: string | null; secondEditor: string | null }[]) =>
+    JSON.stringify(rows.map(r => [r.dutyDate, r.firstEditor, r.secondEditor]));
+
+  it('同一 rng 两次生成完全一致 (可复现)', () => {
+    const a = generateSchedule({ rng: () => 0.42, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0 });
+    const b = generateSchedule({ rng: () => 0.42, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0 });
+    expect(serialize(a)).toBe(serialize(b));
+  });
+
+  it('不同 rng 种子产生不同方案 (重新生成能探索新组合)', () => {
+    const variants = new Set<string>();
+    for (let i = 0; i < 24; i++) {
+      const rows = generateSchedule({ rng: () => i / 24, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0 });
+      variants.add(serialize(rows));
+    }
+    expect(variants.size).toBeGreaterThan(1);
+  });
+
+  it('随机性不破坏均衡: 不同种子下 both 人员版数差仍 ≤ 1', () => {
+    for (let i = 0; i < 10; i++) {
+      const rows = generateSchedule({ rng: () => (i * 7 % 24) / 24, anchorDate: '2026-09-20', entries, settings, fridayRotationStart: 0 });
+      const stat = new Map<string, number>();
+      for (const r of rows) {
+        for (const n of [r.firstEditor, r.secondEditor]) {
+          if (!n || n === '刘钊' || n === '史光浩') continue;
+          stat.set(n, (stat.get(n) ?? 0) + 1);
+        }
+      }
+      const totals = [...stat.values()];
+      expect(Math.max(...totals) - Math.min(...totals)).toBeLessThanOrEqual(1);
+    }
   });
 });
