@@ -22,7 +22,7 @@ PAGE_LABELS = {"01": "一版", "02": "二版", "03": "三版", "04": "四版"}
 MODEL = "mimo-v2.5"
 
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
-from column_detect import KNOWN_COLS
+from column_detect import KNOWN_COLS, normalize_col, is_grounded_claim
 
 
 def get_key():
@@ -130,34 +130,23 @@ def crop_b64(path, box, out_w=1400, quality=88):
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def _lcs(a, b):
-    """最长连续公共子串长度（小串暴力，a/b 均短）"""
-    if len(a) > len(b):
-        a, b = b, a
-    n = len(a)
-    for L in range(n, 0, -1):
-        for i in range(n - L + 1):
-            if a[i:i + L] in b:
-                return L
-    return 0
-
-
-def normalize_col(col):
-    """栏目名对齐到 KNOWN_COLS：精确命中→库内最长公共子串合并（≥5 字）→丢弃(返回空)。
-    解决：横幅跨列切碎、国际栏目前缀缺失、OCR 微差（如“宣传/实践”）"""
-    col = (col or "").strip()
-    if not col:
-        return ""
-    if col in KNOWN_COLS:
-        return col
-    best, best_len = "", 0
-    for k in KNOWN_COLS:
-        ln = _lcs(col, k)
-        if ln > best_len:
-            best, best_len = k, ln
-    if best_len >= 5:
-        return best
-    return ""
+def validate_vision_data(data, source):
+    """过滤视觉模型输出：无当前图栏目条证据或库外栏目不得进入正式匹配。"""
+    valid = []
+    if not isinstance(data, list):
+        print(f"  [{source}] 输出不是 JSON 数组，全部丢弃")
+        return valid
+    for item in data:
+        if not is_grounded_claim(item):
+            print(f"  [{source}] 丢弃无栏目条证据或库外名称的记录")
+            continue
+        valid.append({
+            "column": normalize_col(item["column"]),
+            "bar_visible": True,
+            "bar_text": str(item["bar_text"]).strip(),
+            "articles": [str(t).strip() for t in item["articles"] if str(t).strip()],
+        })
+    return valid
 
 
 def build_crop_prompt(date_str, page_label, titles, region_label):
@@ -166,11 +155,11 @@ def build_crop_prompt(date_str, page_label, titles, region_label):
     return (
         f"这是《中国气象报》{date_str} 的{page_label}版面【{region_label}】区域的裁剪放大图。\n\n"
         f"本版文章标题清单（序号与版面顺序一致）：\n{titles_text}\n\n"
-        f"已知栏目列表（识别栏目条时只能从这些名字中选择，尽量精确匹配）：\n{cols_text}\n\n"
-        f"任务：只寻找本图区域内的【栏目条】——带底色（红底白字/蓝底白字/浅灰底/黄底等）或线框的短标签，或整版刊头横幅（红底、可能带'第X期/总第X期'字样）。\n"
-        f"注意：不设醒目度门槛，小字号/浅底色/细线框的短标签都算；文章标题、引题、副题、报头、报眉、正文、图片说明不是栏目条。\n"
-        f"对每个栏目条，从上方标题清单中选出它下方/附近的文章标题（标题必须与清单原文一致）。\n"
-        f"只输出 JSON 数组：[{{\"column\":\"栏目名\",\"articles\":[\"标题原文1\",...]}}]；本区域没有栏目条就输出 []。不要解释。"
+        f"已知栏目库（只能使用其中的标准名称；栏目库只是命名白名单，不是图中存在栏目的证据）：\n{cols_text}\n\n"
+        f"任务：只寻找本图区域内实际可见的【栏目条】——承载栏目名称的短条/横幅，通常有底色、边框或明确独立版式。浅色、小字号、窄条只要确实是栏目条也必须识别。\n"
+        f"注意：文章标题、引题、副题、报头、报眉、正文、图片说明和普通装饰文字不是栏目条；只有图中明确呈现为独立栏目条时才输出。绝不能根据文章主题、位置邻近、历史栏目或栏目库猜测。\n"
+        f"若栏目条文字对应库内栏目，必须逐字选择库中标准名称，禁止近义替换和相似度/子串强行匹配。对每个栏目条，只从上方标题清单中选出它『正下方、同属一个版块』的文章（标题必须与清单原文一致）；看不清归属就不归入。抄录图中栏目条文字到 bar_text，并将 bar_visible 设为 true。\n"
+        f"只输出 JSON 数组：[{{\"column\":\"库内标准栏目名\",\"bar_visible\":true,\"bar_text\":\"图中栏目条原文\",\"articles\":[\"标题原文1\",...]}}]；本区域没有明确栏目条就输出 []。不要解释。"
     )
 
 
@@ -207,26 +196,74 @@ def run_crop_mode(date_str, bc, page, img_path, titles):
             if data is None:
                 print(f"  [{label}] 无法解析 JSON: {content[:200]}")
                 continue
-            results.extend(data)
-            cols = [d.get("column", "") for d in data if isinstance(d, dict) and d.get("column")]
-            print(f"  [{label}] ok: {cols if cols else '无栏目条'}")
-    # 汇总合并：栏目名先对齐到 KNOWN_COLS（精确/子串合并/丢弃），再聚合去重
+            valid = validate_vision_data(data, label)
+            results.extend(valid)
+            cols = [d.get("column", "") for d in valid if d.get("column")]
+            print(f"  [{label}] ok: {cols if cols else '无有效栏目条'}")
+    # 汇总合并：必须先通过“当前图中确有栏目条 + 严格命中栏目库”校验。
     merged = {}
-    dropped = []
+    evidence = {}
     for d in results:
-        if not isinstance(d, dict):
-            continue
-        col = normalize_col(d.get("column"))
-        if not col:
-            raw = (d.get("column") or "").strip()
+        col = d["column"]
+        evidence.setdefault(col, set()).add(d["bar_text"])
+        for t in d.get("articles", []):
+            merged.setdefault(col, set()).add(str(t).strip())
+    return [{"column": c, "bar_visible": True,
+             "bar_text": sorted(evidence[c])[0],
+             "articles": sorted(list(arts))}
+            for c, arts in merged.items() if c]
+
+
+def merge_column_claims(claims, titles):
+    """合并已通过栏目条证据校验的认领，不以覆盖率猜测或删除真实栏目。
+    claims: [(source, column, [article,...]), ...]，source ∈ {整版, 顶部通栏, 中部上, 中部下, 版底}
+    规则：
+      1. 每条认领必须来自当前图中可见栏目条，栏目名严格命中 KNOWN_COLS；
+      2. 同一文章被多个不同栏目认领 → 放大条带来源、多视图优先仲裁；
+      3. 栏目条覆盖几篇由版面实际结构决定，禁止用覆盖率安全阈值造成漏栏目。
+    """
+    art_claims = {}   # article -> {col: set(source)}
+    dropped = []
+    evidence = {}
+    for src, col, arts, bar_text in claims:
+        c = normalize_col(col)
+        if not c:
+            raw = (col or "").strip()
             if raw:
                 dropped.append(raw)
             continue
-        for t in d.get("articles", []):
-            merged.setdefault(col, set()).add(str(t).strip())
+        evidence.setdefault(c, set()).add(str(bar_text).strip())
+        for t in arts:
+            ts = str(t).strip()
+            art_claims.setdefault(ts, {}).setdefault(c, set()).add(src)
     if dropped:
         print(f"  [汇总] 丢弃库外栏目名: {sorted(set(dropped))}")
-    return [{"column": c, "articles": sorted(list(arts))} for c, arts in merged.items() if c]
+
+    # 冲突仲裁：一篇文章被多个栏目认领 → 择一（条带>整版，多视图>少，先出现定序）
+    resolved = {}
+    for art, colmap in art_claims.items():
+        if len(colmap) == 1:
+            resolved[art] = next(iter(colmap))
+            continue
+
+        def _rank(item):
+            col, sources = item
+            bands = [s for s in sources if s != "整版"]
+            return (len(bands) > 0, len(sources), col)
+
+        best = max(colmap.items(), key=_rank)
+        print(f"  [仲裁] 「{art[:22]}」被 {sorted(colmap)} 认领 → 取「{best[0]}」")
+        resolved[art] = best[0]
+
+    # 按栏目聚合
+    merged = {}
+    for art, col in resolved.items():
+        merged.setdefault(col, []).append(art)
+
+    return [{"column": c, "bar_visible": True,
+             "bar_text": sorted(evidence.get(c, {c}))[0],
+             "articles": sorted(set(a))}
+            for c, a in merged.items() if a]
 
 
 def run_whole_zoom_mode(date_str, bc, page, img_path, titles):
@@ -237,7 +274,7 @@ def run_whole_zoom_mode(date_str, bc, page, img_path, titles):
     横向条带全宽不切列，横幅栏目条完整可见（旧 3 列纵切会把横幅切碎导致漏识）。
     归属合并：局部细看结果优先（放大更可信），整版结果补漏（策划版整版刊头管辖全版）。
     """
-    all_cols = []
+    claims = []
 
     # Phase 1: 整版一次识别
     prompt_full = build_prompt(date_str, bc, page, titles)
@@ -248,9 +285,11 @@ def run_whole_zoom_mode(date_str, bc, page, img_path, titles):
         if data is None:
             print(f"  [整版] 无法解析 JSON: {content[:200]}")
         else:
-            all_cols.extend(d for d in data if isinstance(d, dict))
-            cols = [normalize_col(d.get("column", "")) or d.get("column", "") for d in data if isinstance(d, dict) and d.get("column")]
-            print(f"  [整版] ok: {cols if cols else '无栏目条'}")
+            valid = validate_vision_data(data, "整版")
+            for d in valid:
+                claims.append(("整版", d["column"], d["articles"], d["bar_text"]))
+            cols = [d["column"] for d in valid]
+            print(f"  [整版] ok: {cols if cols else '无有效栏目条'}")
     else:
         print(f"  [整版] 视觉模型失败: {err}")
 
@@ -272,29 +311,15 @@ def run_whole_zoom_mode(date_str, bc, page, img_path, titles):
             if data is None:
                 print(f"  [{label}] 无法解析 JSON: {content[:200]}")
                 continue
-            all_cols.extend(d for d in data if isinstance(d, dict))
-            cols = [normalize_col(d.get("column", "")) or d.get("column", "") for d in data if isinstance(d, dict) and d.get("column")]
-            print(f"  [{label}] ok: {cols if cols else '无栏目条'}")
+            valid = validate_vision_data(data, label)
+            for d in valid:
+                claims.append((label, d["column"], d["articles"], d["bar_text"]))
+            cols = [d["column"] for d in valid]
+            print(f"  [{label}] ok: {cols if cols else '无有效栏目条'}")
 
-    # 汇总合并：局部（条带）结果优先，整版补漏；栏目名对齐 KNOWN_COLS
-    band_cols = [d for d in all_cols if d.get("column")]
-    article2col = {}
-    merged = {}
-    dropped = []
-    for d in band_cols:
-        col = normalize_col(d.get("column"))
-        if not col:
-            raw = (d.get("column") or "").strip()
-            if raw:
-                dropped.append(raw)
-            continue
-        for t in d.get("articles", []):
-            ts = str(t).strip()
-            merged.setdefault(col, set()).add(ts)
-            article2col.setdefault(ts, col)
-    if dropped:
-        print(f"  [汇总] 丢弃库外栏目名: {sorted(set(dropped))}")
-    return [{"column": c, "articles": sorted(list(arts))} for c, arts in merged.items() if c]
+    # 汇总合并：只合并有当前版面栏目条证据的有效认领，不凭覆盖率猜测
+    data = merge_column_claims(claims, titles)
+    return data
 
 
 def write_vision(date_str, bc, data, titles, mode_label):
@@ -323,13 +348,14 @@ def build_prompt(date_str, bc, page_label, titles):
         f"这是《中国气象报》{date_str} 的{page_label}（版面图）。\n\n"
         f"本版共有 {len(titles)} 篇文章，标题清单如下（序号与版面实际顺序一致）：\n"
         f"{titles_text}\n\n"
-        f"已知栏目列表（识别栏目条时只能从这些名字中选择，尽量精确匹配）：\n"
+        f"已知栏目库（只能使用其中的标准名称；栏目库只是命名白名单，不是图中存在栏目的证据）：\n"
         f"{cols_text}\n\n"
         f"任务：\n"
-        f"1. 仔细观察版面图中的\"栏目条\"——即带底色、线框或特殊样式、位于整版或一组文章上方的栏目标识。注意：不设醒目度门槛，小字号/浅底色/细线框的短标签都算；报头、导读、刊名不是栏目条；文章标题、引题、副题不是栏目条。\n"
-        f"2. 如果整版顶部只有一个大的统一栏目条，本版所有文章都属于该栏目。\n"
-        f"3. 将每篇文章（按标题清单逐条）归属到它所在栏目条对应的栏目；如果某篇文章上方没有栏目条，则归到离它最近的栏目条，或归空（不属于任何栏目）。\n"
-        f"4. 只输出 JSON 数组，每项为 {{\"column\": \"栏目名\", \"articles\": [\"标题原文1\", \"标题原文2\"]}}，标题必须与清单原文一致。没有栏目条时输出空数组 []。不要输出任何解释。"
+        f"1. 仔细观察版面图中实际存在的\"栏目条\"——承载栏目名称的短条/横幅，通常有底色、边框或明确独立版式。浅色、小字号、窄条只要确实是栏目条也必须识别；文章标题、引题、副题、报头、报眉、导读、刊名不是栏目条。\n"
+        f"2. 只有图中确实看见并确认其承担栏目标题的整版刊头，才按实际版块边界归属文章；不能仅凭策划版/专题版类型自动覆盖。\n"
+        f"3. 将每篇文章（按标题清单逐条）归属到它所在栏目条：只把『栏目条正下方、与其同属一个版块』的文章归入；绝大多数文章上方没有栏目条（常规版正常排版），没有栏目条就归空。\n"
+        f"4. 栏目库只是标准命名白名单，不是栏目存在证据；绝不因主题相近、位置邻近、历史出现过或库中有该名称而编造栏目。若看见的栏目条文字对应库内名称，必须逐字使用库中标准名称，禁止近义替换和相似度/子串强行匹配。\n"
+        f"5. 每条输出必须抄录图中栏目条文字到 bar_text，并将 bar_visible 设为 true：{{\"column\": \"库内标准栏目名\", \"bar_visible\": true, \"bar_text\": \"图中栏目条原文\", \"articles\": [\"标题原文1\", \"标题原文2\"]}}。标题必须与清单原文一致；没有明确栏目条时输出空数组 []。不要输出任何解释。"
     )
 
 
@@ -391,6 +417,7 @@ def main():
         if data is None:
             print(f"  [x] 无法解析 JSON: {content[:300]}")
             continue
+        data = validate_vision_data(data, "整版")
 
         out_path = os.path.join(OUT_DIR, f"{date_str}_{bc}_vision.json")
         json.dump(data, open(out_path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)

@@ -14,6 +14,7 @@ import {
 	requireUser,
 } from "./auth";
 import { chooseEvidenceCount, rerankSources } from "./ai/rerank";
+import { aggregateProvinceStats } from "./archive/stats";
 import paibanApp from "./paiban";
 
 const EMBEDDING_MODEL = "@cf/baai/bge-m3";
@@ -100,6 +101,23 @@ async function getArticle(id: string, env: Env) {
 	const result = await env.DB.prepare("SELECT article_id, source_path, title, subtitle, author, published_date, page, theme, edition_type, headline, image, column_name, region, content FROM articles WHERE article_id = ?").bind(id).first<Record<string, unknown>>();
 	if (!result) return error("not_found", 404);
 	return json({ ...result, author: parseList(result.author), column_name: parseList(result.column_name), region: parseList(result.region) });
+}
+
+async function provinceStats(url: URL, env: Env) {
+	const from = url.searchParams.get("from")?.trim() || undefined;
+	const to = url.searchParams.get("to")?.trim() || undefined;
+	for (const [key, value] of [["from", from], ["to", to]] as const) {
+		if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return error(`${key} must be YYYY-MM-DD`, 400);
+	}
+	if (from && to && from > to) return error("from must not be after to", 400);
+	const where: string[] = [];
+	const params: string[] = [];
+	if (from) { where.push("published_date >= ?"); params.push(from); }
+	if (to) { where.push("published_date <= ?"); params.push(to); }
+	const sql = `SELECT published_date, region FROM articles${where.length ? ` WHERE ${where.join(" AND ")}` : ""}`;
+	const rows = await env.DB.prepare(sql).bind(...params).all<{ published_date: string; region: string | null }>();
+	const dates = rows.results.map((row) => row.published_date).filter(Boolean).sort();
+	return json({ from: from ?? null, to: to ?? null, available_from: dates[0] ?? null, available_to: dates[dates.length - 1] ?? null, ...aggregateProvinceStats(rows.results) });
 }
 
 type EmbeddingResponse = { data: number[][] };
@@ -209,6 +227,7 @@ export default {
 			}
 			if (url.pathname === "/api/columns") return listFacet(url, env, "column_name");
 			if (url.pathname === "/api/themes") return listFacet(url, env, "theme");
+			if (url.pathname === "/api/stats") return provinceStats(url, env);
 			if (url.pathname === "/api/answer" && request.method === "POST") return answerQuestion(request, env);
 			if (url.pathname === "/api/articles") return listArticles(url, env);
 			if (url.pathname.startsWith("/api/articles/")) return getArticle(decodeURIComponent(url.pathname.slice("/api/articles/".length)), env);
