@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-栏目自动识别脚本（试验性质，不写入正式数据）
+栏目识别、frontmatter 写入与格式闸门脚本
 
 用法:
   python3 column_detect.py YYYYMMDD [BC]    # 指定日期+版次
@@ -9,6 +9,11 @@
 输出:
   <项目根>/cmnrag/column_test/YYYYMMDD_BC_result.json
   控制台打印检测+对比结果
+  识别结果默认写入稿件 frontmatter 的 column（严格使用 YAML 块式 list）
+
+选项:
+  --no-apply  仅生成/打印结果，不写入 frontmatter（调试用）
+  --check     只检查目标稿件的 author/column/region 是否为 YAML list 或空值
 
 依赖: vision_analyze（由调用者执行，结果写入 _vision.json 后脚本自动读取）
 """
@@ -20,7 +25,7 @@ OUT_DIR = os.environ.get("CMNRAG_DATA_DIR", os.path.join(os.path.dirname(os.path
 OUT_DIR = os.path.join(OUT_DIR, "column_test")
 PAGE_LABELS = {"01": "一版", "02": "二版", "03": "三版", "04": "四版"}
 
-KNOWN_COLS = ['短讯速递', '科普看台', '气象博观', '党旗在基层一线高高飘扬', '科技视野', '汛期气象科技支撑系列报道', '气象观天下', '振兴 乡村小而美', '时评', '权威解读', '领略 国际气象发展前沿', '党旗在防汛一线飘扬', '强化政治机关意识 走好第一方阵', '我在现场', '树立和践行正确政绩观', '漫评', '科普一读', '要闻简报', '强化政治机关意识 走好第一方阵•学思践悟', '编辑点评', '双碳行动', '国际天气观察站', '在希望的田野上', '安全生产', '气象服务领域数据流通安全治理典型案例', '深度调研', '锋评', '强化政治机关意识 走好第一方阵•评论', '强化政治机关意识 走好第一方阵•榜样力量', '我和天气打交道', '春雨日记', '气象科技能力现代化 社会服务现代化•科技创新', '气象科技能力现代化 社会服务现代化•解码气象科技', '强化政治机关意识 走好第一方阵', '“七下八上”防汛关键期系列报道', '“人民至上、生命至上”主题实践活动 发挥气象防灾减灾第一道防线作用', '“人民至上、生命至上”主题实践活动•先锋', '“十五五“气象高质量发展怎么干', '“十五五”开好局起好步', '“扎实做好防灾救灾各项工作”系列评论', '“打赢‘七下八上’防汛救灾硬仗”系列评论', '“气象+”赋能经济社会高质量发展', '亲历者记忆', '党建纵览', '农业气候资源普查和区划•看试点', '古韵廉心•清风悟语 | 丹心话廉', '名士观点', '天气观察站', '守正创新 奉献气象•弘扬新时代科学家精神主题实践活动典型案例', '总书记的关切•落地回响', '权威发布', '树立和践行正确政绩观•学典型', '环球视线', '科技资源科普化', '聚焦气象科技活动周', '能源气象服务适用技术成果', '记者观察', '谈天说“理”', '践行“观测及服务”理念 赋能气象服务提质增效', '地方领导谈气象', '高质量发展中国行 新时代的气象万千', '强化政治机关意识 走好第一方阵•一线答卷', '聚焦北方地区极端天气防御能力建设', '清廉气象', '千乡万村气象科普行', '微话题', '云海', '中国气象智能预警方案“妈祖”']
+KNOWN_COLS = ['短讯速递', '气象行业统筹试点成效系列报道', '科普看台', '气象博观', '党旗在基层一线高高飘扬', '科技视野', '汛期气象科技支撑系列报道', '气象观天下', '振兴 乡村小而美', '时评', '权威解读', '领略 国际气象发展前沿', '党旗在防汛一线飘扬', '强化政治机关意识 走好第一方阵', '我在现场', '树立和践行正确政绩观', '漫评', '科普一读', '要闻简报', '强化政治机关意识 走好第一方阵•学思践悟', '编辑点评', '双碳行动', '国际天气观察站', '在希望的田野上', '安全生产', '气象服务领域数据流通安全治理典型案例', '深度调研', '锋评', '强化政治机关意识 走好第一方阵•评论', '强化政治机关意识 走好第一方阵•榜样力量', '我和天气打交道', '春雨日记', '气象科技能力现代化 社会服务现代化•科技创新', '气象科技能力现代化 社会服务现代化•解码气象科技', '强化政治机关意识 走好第一方阵', '“七下八上”防汛关键期系列报道', '“人民至上、生命至上”主题实践活动 发挥气象防灾减灾第一道防线作用', '“人民至上、生命至上”主题实践活动•先锋', '“十五五“气象高质量发展怎么干', '“十五五”开好局起好步', '“扎实做好防灾救灾各项工作”系列评论', '“打赢‘七下八上’防汛救灾硬仗”系列评论', '“气象+”赋能经济社会高质量发展', '亲历者记忆', '党建纵览', '农业气候资源普查和区划•看试点', '古韵廉心•清风悟语 | 丹心话廉', '名士观点', '天气观察站', '守正创新 奉献气象•弘扬新时代科学家精神主题实践活动典型案例', '总书记的关切•落地回响', '权威发布', '树立和践行正确政绩观•学典型', '环球视线', '科技资源科普化', '聚焦气象科技活动周', '能源气象服务适用技术成果', '记者观察', '谈天说“理”', '践行“观测及服务”理念 赋能气象服务提质增效', '地方领导谈气象', '高质量发展中国行 新时代的气象万千', '强化政治机关意识 走好第一方阵•一线答卷', '聚焦北方地区极端天气防御能力建设', '清廉气象', '千乡万村气象科普行', '微话题', '云海', '中国气象智能预警方案“妈祖”']
 
 
 def _column_key(value):
@@ -48,7 +53,8 @@ def is_grounded_claim(item):
     articles = item.get("articles")
     if not column or not bar_text or not isinstance(articles, list):
         return False
-    # bar_text 至少要包含标准栏目名，避免用空泛描述伪造“看见栏目条”。
+    # 栏标是唯一证据：bar_text 至少要包含标准栏目名，避免用空泛描述伪造“看见栏目条”。
+    # 文章标题/正文/主题不参与栏目候选判断；这里只校验栏标文字与栏目库的比对。
     return _column_key(column) in _column_key(bar_text)
 
 
@@ -59,15 +65,15 @@ PROMPT_TEMPLATE = """这是中国气象报{date}的{page_label}版面图。请�
 
 硬规则（必须遵守）：
 1. 先看图确认真实的栏目条：它是承载栏目名称的短条/横幅，通常有底色、边框或明确的独立版式，并位于一组文章或整版内容上方。只要确实是栏目条，即使浅色、小字号、窄条也不能漏掉。
-2. 只有在本期版面图中确实看见栏目条，才允许输出栏目；绝不能因文章标题、正文主题、版面名、历史上出现过，或已知栏目库中存在该名称而猜测。
+2. 栏目候选只能由本期版面图中实际看见的栏标产生；绝不能因文章标题、正文内容/主题、版面名、历史上出现过，或已知栏目库中存在该名称而猜测。
 3. 文章标题、引题、副题、导读、报头、报眉、正文、图片说明、普通装饰性小标签不是栏目条。不要把“看起来像栏目名”的文字当作栏目条，除非图中有明确的栏目条版式。
 4. 如果看见的栏目条文字对应已知栏目库，`column` 必须逐字使用库中的标准名称；禁止近义替换、主题推断、最长子串匹配或把相似名称强行对齐。
 5. 整版刊头只有在图中确实可见且明确承担栏目标题时，才按其实际覆盖范围归属文章；不能仅凭策划版/专题版的类型自动覆盖。
-6. 栏目条下方文章的归属必须依据版面位置和版块边界；看不清或不能确定就不归属。标题必须来自清单原文。
+6. 只有栏标已经确认并与栏目库严格比对后，才可依据版面位置和版块边界确定其正下方文章；标题清单仅用于归属映射，不是栏目存在或栏目名称的证据。看不清或不能确定就不归属。标题必须来自清单原文。
 7. 栏目条证据必须写入 `bar_text`（抄录图中看到的栏目条文字），并将 `bar_visible` 设为 true；不能用模型猜出的栏目名代替证据。
 
 请只输出JSON数组，每项格式为：
-{"column":"已知栏目库中的标准名称","bar_visible":true,"bar_text":"图中栏目条原文","articles":["该栏目条正下方的标题原文"]}
+{{"column":"已知栏目库中的标准名称","bar_visible":true,"bar_text":"图中栏目条原文","articles":["该栏目条正下方的标题原文"]}}
 
 看不见明确栏目条时返回 []。不要解释。"""
 
@@ -88,6 +94,215 @@ def normalize(s):
         s = s.replace(ch, "")
     s = s.replace("(", "").replace(")", "")
     return s.strip()
+
+
+LIST_FIELDS = ("author", "column", "region")
+
+
+def _frontmatter_bounds(lines):
+    """返回 YAML frontmatter 的 (start, end)，end 为第二个 --- 的行号。"""
+    if not lines or lines[0].lstrip("\ufeff").strip() != "---":
+        return None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return 0, i
+    return None
+
+
+def _frontmatter_field(lines, start, end, field):
+    """读取字段的行号、行内值和块式列表项。"""
+    prefix = f"{field}:"
+    for i in range(start + 1, end):
+        raw = lines[i].rstrip("\r\n")
+        if not raw.startswith(prefix) or (len(raw) > len(prefix) and raw[len(prefix)] not in " \t"):
+            continue
+        inline = raw[len(prefix):].strip()
+        items = []
+        j = i + 1
+        while j < end:
+            item_raw = lines[j].rstrip("\r\n")
+            if not re.match(r"^\s*-\s*", item_raw):
+                break
+            if re.match(r"^  - \S.*$", item_raw):
+                items.append(item_raw[4:].strip())
+            else:
+                items.append(None)
+            j += 1
+        return i, inline, items
+    return None, None, None
+
+
+def _render_list_field(field, values, newline="\n"):
+    """渲染单值也保持块式 YAML list；空值只写 key。"""
+    values = [str(v).strip() for v in (values or []) if str(v).strip()]
+    if not values:
+        return f"{field}: {newline}"
+    return f"{field}:{newline}" + "".join(f"  - {v}{newline}" for v in values)
+
+
+def _replace_list_field_text(text, field, values):
+    """只替换 frontmatter 中一个字段，并保证 list 序列化格式。"""
+    lines = text.splitlines(keepends=True)
+    bounds = _frontmatter_bounds(lines)
+    if not bounds:
+        raise ValueError("缺少合法 frontmatter")
+    start, end = bounds
+    field_i, _, _ = _frontmatter_field(lines, start, end, field)
+    if field_i is None:
+        raise ValueError(f"frontmatter 缺少字段 {field}")
+    j = field_i + 1
+    while j < end and re.match(r"^\s*-\s*", lines[j].rstrip("\r\n")):
+        j += 1
+    newline = "\r\n" if "\r\n" in text else "\n"
+    block = _render_list_field(field, values, newline).splitlines(keepends=True)
+    return "".join(lines[:field_i] + block + lines[j:])
+
+
+def _article_files(date_str, bc):
+    data_root = os.path.dirname(OUT_DIR)
+    page_dir = os.path.join(data_root, date_str[:6], date_str, PAGE_LABELS.get(bc, bc))
+    if not os.path.isdir(page_dir):
+        return []
+    paths = [os.path.join(page_dir, name) for name in os.listdir(page_dir)
+             if name.endswith(".md")]
+    return sorted(paths, key=lambda p: (int(re.match(r"\d+", os.path.basename(p)).group())
+                                        if re.match(r"\d+", os.path.basename(p)) else 9999,
+                                        os.path.basename(p)))
+
+
+def _article_meta(path):
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    lines = text.splitlines(keepends=True)
+    bounds = _frontmatter_bounds(lines)
+    if not bounds:
+        return {"path": path, "title": "", "image": False}
+    start, end = bounds
+    _, title, _ = _frontmatter_field(lines, start, end, "title")
+    image = any(re.match(r"^image:\s*true\s*$", lines[i].rstrip("\r\n"), re.I)
+                for i in range(start + 1, end))
+    return {"path": path, "title": title or "", "image": image}
+
+
+def _match_local_article(api_title, articles, used, image_index):
+    """将 API/视觉标题映射到本地稿件；去重稿件不强行映射。"""
+    if api_title.strip() == "图片新闻":
+        image_articles = [a for a in articles if a["image"] and a["path"] not in used]
+        if image_index < len(image_articles):
+            return image_articles[image_index], image_index + 1
+        return None, image_index
+
+    key = normalize(api_title)
+    exact = [a for a in articles if a["path"] not in used and normalize(a["title"]) == key]
+    if len(exact) == 1:
+        return exact[0], image_index
+    fuzzy = [a for a in articles if a["path"] not in used and
+             fuzzy_title_match(api_title, [a["title"]])]
+    if len(fuzzy) == 1:
+        return fuzzy[0], image_index
+    return None, image_index
+
+
+def apply_columns_to_page(date_str, bc, results):
+    """把检测到的非空栏目写入空 column；已有值一律保留，避免覆盖审核结果。"""
+    articles = [_article_meta(p) for p in _article_files(date_str, bc)]
+    if not articles:
+        print(f"  [!] {PAGE_LABELS.get(bc, bc)} 没有本地稿件，跳过 frontmatter 写入")
+        return
+
+    used = set()
+    image_index = 0
+    updated = 0
+    skipped = 0
+    for result in results:
+        column = str(result.get("detected_column") or "").strip()
+        if not column:
+            continue
+        article, image_index = _match_local_article(
+            str(result.get("title") or ""), articles, used, image_index
+        )
+        if not article:
+            skipped += 1
+            continue
+        path = article["path"]
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        lines = text.splitlines(keepends=True)
+        bounds = _frontmatter_bounds(lines)
+        if not bounds:
+            print(f"  [x] {os.path.basename(path)} 缺少合法 frontmatter")
+            continue
+        start, end = bounds
+        _, inline, items = _frontmatter_field(lines, start, end, "column")
+        if inline:
+            print(f"  [x] {os.path.basename(path)} 的 column 是标量，拒绝覆盖")
+            continue
+        if items:
+            # 审核前后均不覆盖已有栏目；差异交人工处理。
+            if items != [column]:
+                print(f"  [保留] {os.path.basename(path)} 已有栏目，未覆盖")
+            used.add(path)
+            continue
+        new_text = _replace_list_field_text(text, "column", [column])
+        if new_text != text:
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                f.write(new_text)
+            updated += 1
+        used.add(path)
+
+    print(f"  [ok] {PAGE_LABELS.get(bc, bc)} frontmatter 栏目写入 {updated} 篇"
+          + (f"，未映射/跳过 {skipped} 条" if skipped else ""))
+
+
+def _validate_frontmatter_file(path):
+    errors = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines(keepends=True)
+    except Exception as e:
+        return [f"{path}: 无法读取：{e}"]
+    bounds = _frontmatter_bounds(lines)
+    if not bounds:
+        return [f"{path}: 缺少合法 frontmatter"]
+    start, end = bounds
+    for field in LIST_FIELDS:
+        field_i, inline, _ = _frontmatter_field(lines, start, end, field)
+        if field_i is None:
+            errors.append(f"{path}: 缺少字段 {field}")
+            continue
+        if inline:
+            errors.append(f"{path}: {field} 使用了标量，必须是 YAML 块式 list")
+            continue
+        j = field_i + 1
+        while j < end:
+            raw = lines[j].rstrip("\r\n")
+            if not re.match(r"^\s*-\s*", raw):
+                break
+            if not re.match(r"^  - \S.*$", raw):
+                errors.append(f"{path}: {field} 列表项格式错误：{raw}")
+            j += 1
+    return errors
+
+
+def validate_frontmatter_tree(date_str, bcs):
+    """失败即停：所有目标稿件的多值字段只能是 list 或空值。"""
+    errors = []
+    checked = 0
+    data_root = os.path.dirname(OUT_DIR)
+    for bc in bcs:
+        page_dir = os.path.join(data_root, date_str[:6], date_str, PAGE_LABELS.get(bc, bc))
+        if not os.path.isdir(page_dir):
+            continue
+        for path in _article_files(date_str, bc):
+            checked += 1
+            errors.extend(_validate_frontmatter_file(path))
+    if errors:
+        print(f"  [x] frontmatter list 闸门失败：{len(errors)} 处")
+        for error in errors:
+            print(f"    - {error}")
+        return False
+    print(f"  [ok] frontmatter list 闸门通过：{checked} 篇")
+    return True
 
 
 def get_page_data(date_str, bc):
@@ -181,11 +396,21 @@ def main():
         import io as _io
         sys.stdout = _io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     if len(sys.argv) < 2:
-        print("用法: python3 column_detect.py YYYYMMDD [BC]")
+        print("用法: python3 column_detect.py YYYYMMDD [BC] [--no-apply|--check]")
         sys.exit(1)
-    date_str = sys.argv[1]
-    bcs = [sys.argv[2]] if len(sys.argv) > 2 else ["01", "02", "03", "04"]
+    args = sys.argv[1:]
+    date_str = args[0]
+    bcs = [a for a in args[1:] if a in PAGE_LABELS] or ["01", "02", "03", "04"]
+    apply_results = "--no-apply" not in args
     os.makedirs(OUT_DIR, exist_ok=True)
+
+    if "--check" in args:
+        sys.exit(0 if validate_frontmatter_tree(date_str, bcs) else 2)
+
+    # 写入前先拦截已有的标量/坏格式，避免批处理中途部分写入后才失败。
+    if not validate_frontmatter_tree(date_str, bcs):
+        print("  [x] 写入前闸门未通过，停止栏目写入")
+        sys.exit(2)
 
     for bc in bcs:
         page = PAGE_LABELS.get(bc, bc)
@@ -208,12 +433,17 @@ def main():
             # 保存结果
             out_path = os.path.join(OUT_DIR, f"{date_str}_{bc}_result.json")
             json.dump(results, open(out_path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+            if apply_results:
+                apply_columns_to_page(date_str, bc, results)
             # 审核完成：删除版面图（视觉结果已存 _vision.json，图可随时从 epaper 重新下载）
             if img_path and os.path.exists(img_path):
                 os.remove(img_path)
                 print(f"  [ok] 已删除版面图 {os.path.basename(img_path)}")
         else:
             run_vision(img_path, date_str, bc, page)
+
+    if not validate_frontmatter_tree(date_str, bcs):
+        sys.exit(2)
 
 
 if __name__ == "__main__":

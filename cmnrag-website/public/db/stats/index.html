@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>各省发稿数量 · 条形图</title>
+<style>
+  :root {
+    --ink: #17384a;
+    --muted: #78909d;
+    --line: #d8effb;
+    --line-strong: #39a9e8;
+    --accent: #168ccc;
+    --wash: #f7fcff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: #fff;
+    font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  .page { max-width: 1280px; margin: 0 auto; padding: 30px 28px 56px; }
+  .masthead { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+  .eyebrow { color: var(--accent); font-size: 12px; letter-spacing: .16em; font-weight: 700; margin-bottom: 8px; }
+  h1 { margin: 0; font-size: clamp(28px, 4vw, 46px); line-height: 1.08; letter-spacing: .04em; font-weight: 700; }
+  .subtitle { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
+  .badge { color: #5f8293; border: 1px solid #c7e9fb; border-radius: 999px; padding: 8px 13px; font-size: 12px; white-space: nowrap; background: #fbfeff; }
+  .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin: 18px 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fbfeff; }
+  .toolbar label { display: inline-flex; align-items: center; gap: 7px; color: #587787; font-size: 13px; }
+  input[type=date] { border: 1px solid #b9e1f5; border-radius: 7px; background: #fff; color: var(--ink); padding: 7px 9px; font: inherit; font-size: 13px; }
+  button { border: 1px solid #a7dcf5; border-radius: 7px; background: #eef9ff; color: #167eae; padding: 7px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  button:hover, button.active { border-color: var(--line-strong); background: #dff4ff; }
+  .quick { display: inline-flex; gap: 6px; margin-left: auto; }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 16px 0 20px; }
+  .stat { min-height: 94px; padding: 15px 17px; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(145deg, #fff, #f8fcff); }
+  .stat-label { color: var(--muted); font-size: 12px; }
+  .stat-value { margin-top: 8px; color: #147eae; font-size: 28px; line-height: 1.1; font-weight: 750; }
+  .stat-value small { color: #6e8d9a; font-size: 13px; font-weight: 500; }
+  .chart-card { border: 1px solid var(--line); border-radius: 14px; padding: 15px 15px 11px; background: #fff; box-shadow: 0 7px 28px rgba(63, 159, 205, .06); }
+  .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 3px 7px 14px; color: #75919e; font-size: 12px; }
+  .chart-head strong { color: #4e7283; font-size: 14px; }
+  .chart-body { padding: 5px 8px 4px; border-radius: 10px; background: linear-gradient(90deg, #fff, #fbfeff 50%, #fff); }
+  .axis { display: grid; grid-template-columns: 30px 96px minmax(0, 1fr) 70px; gap: 12px; align-items: center; margin: 0 0 7px; color: #9ab0ba; font-size: 11px; }
+  .axis-scale { display: flex; justify-content: space-between; padding: 0 2px; }
+  .bar-chart { display: grid; gap: 5px; }
+  .bar-row { display: grid; grid-template-columns: 30px 96px minmax(0, 1fr) 70px; gap: 12px; align-items: center; min-height: 34px; padding: 3px 5px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; outline: none; }
+  .bar-row:hover, .bar-row:focus, .bar-row.selected { border-color: #c5eafa; background: #f4fbff; }
+  .rank { color: #a2b7c0; font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+  .bar-label { color: #547582; font-size: 14px; white-space: nowrap; }
+  .bar-row.zero .bar-label { color: #9aadb5; }
+  .bar-track { position: relative; height: 18px; overflow: hidden; border-radius: 5px; background: repeating-linear-gradient(90deg, #f1f9fd 0, #f1f9fd calc(25% - 1px), #dceff8 25%); }
+  .bar-fill { display: block; width: var(--width); height: 100%; min-width: 2px; border-radius: 5px; background: linear-gradient(90deg, #a7def7, #2998cf); transition: width .2s ease, filter .2s ease; }
+  .bar-row.zero .bar-fill { min-width: 0; background: #edf5f8; }
+  .bar-row:hover .bar-fill, .bar-row:focus .bar-fill, .bar-row.selected .bar-fill { filter: saturate(1.16) brightness(.98); }
+  .bar-value { color: #147eae; font-size: 14px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+  .bar-row.zero .bar-value { color: #a9bbc3; font-weight: 500; }
+  .legend-row { display: flex; align-items: center; gap: 11px; padding: 13px 8px 2px; color: #7b97a3; font-size: 12px; }
+  .gradient { width: 170px; height: 8px; border-radius: 99px; background: linear-gradient(90deg, #f5fbff, #dff3ff, #b8e6fb, #75c8ee, #268fc4); border: 1px solid #c9ebfa; }
+  .detail { display: none; align-items: center; gap: 14px; margin-top: 12px; padding: 12px 15px; border: 1px solid #cceafa; border-radius: 10px; color: #5c7d8a; background: #f8fdff; font-size: 13px; }
+  .detail.show { display: flex; }
+  .detail strong { color: #147eae; font-size: 18px; }
+  .detail .detail-count { color: #147eae; font-weight: 700; }
+  .detail a { margin-left: auto; color: #168ccc; text-decoration: none; }
+  .detail a:hover { text-decoration: underline; }
+  .note { margin: 14px 5px 0; color: #8aa0aa; font-size: 12px; line-height: 1.7; }
+  .error { padding: 24px; color: #a45c5c; border: 1px solid #f0cccc; border-radius: 10px; background: #fff8f8; }
+  #auth-bar { background:#0d2b52; color:#d5e5ff; font-size:13.5px; box-shadow:0 2px 8px #071b3930; position:sticky; top:0; z-index:40; }
+  #auth-bar .auth-bar-inner { max-width:1280px; margin:0 auto; padding:10px 28px; display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:14px; }
+  #auth-bar .auth-left { justify-self:start; }
+  #auth-bar .auth-nav { justify-self:center; display:flex; gap:6px; align-items:center; }
+  #auth-bar .auth-right { justify-self:end; display:flex; gap:14px; align-items:center; }
+  #auth-bar .auth-home { color:#a8c7ff; text-decoration:none; font-weight:650; white-space:nowrap; padding:6px 0; }
+  #auth-bar .auth-home:hover { color:#fff; }
+  #auth-bar .auth-link { color:#d5e5ff; text-decoration:none; cursor:pointer; background:none; border:none; font-size:13.5px; padding:6px 12px; border-radius:6px; white-space:nowrap; }
+  #auth-bar .auth-link:hover { color:#fff; background:#ffffff1a; }
+  #auth-bar .auth-link.active { color:#fff; background:#ffffff1f; font-weight:650; }
+  #auth-bar .auth-name { color:#cfe2ff; white-space:nowrap; }
+  #auth-bar .auth-btn { padding:6px 0; }
+  @media (max-width:860px) { #auth-bar .auth-bar-inner { grid-template-columns:1fr auto; padding:8px 14px; gap:6px 12px; } #auth-bar .auth-nav { grid-column:1/-1; grid-row:2; justify-self:center; } }
+  @media (max-width: 900px) {
+    .page { padding: 22px 13px 35px; }
+    .masthead { display: block; }
+    .badge { display: inline-block; margin-top: 15px; }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .quick { margin-left: 0; }
+  }
+  @media (max-width: 620px) {
+    .axis, .bar-row { grid-template-columns: 26px 72px minmax(0, 1fr) 52px; gap: 8px; }
+    .bar-label, .bar-value { font-size: 13px; }
+    .chart-body { padding-left: 2px; padding-right: 2px; }
+  }
+  @media (max-width: 520px) {
+    .stats { gap: 8px; }
+    .stat { min-height: 80px; padding: 11px; }
+    .stat-value { font-size: 22px; }
+    .toolbar label { width: 100%; justify-content: space-between; }
+    .quick { width: 100%; }
+    .quick button { flex: 1; }
+    .detail { flex-wrap: wrap; }
+    .detail a { margin-left: 0; width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div id="auth-bar"><div class="auth-bar-inner"><div class="auth-left"><a class="auth-home" href="/">‹ 返回主页</a></div><nav class="auth-nav"><a class="auth-link active" href="/db">报纸资料库</a><a class="auth-link" href="/schedule">排班系统</a></nav><div class="auth-right"></div></div></div>
+<main class="page">
+  <header class="masthead">
+    <div>
+      <div class="eyebrow">中国气象报 · DATA PROTOTYPE</div>
+      <h1>各省发稿数量</h1>
+      <p class="subtitle">按省级区排序的发稿量 · 横向条形图 · 直接比较</p>
+    </div>
+    <div class="badge">本地预览 · 未接入线上</div>
+  </header>
+
+  <section class="toolbar" aria-label="日期筛选">
+    <label>开始日期 <input id="from" type="date"></label>
+    <label>结束日期 <input id="to" type="date"></label>
+    <button id="apply">应用筛选</button>
+    <div class="quick">
+      <button data-range="30">近 30 天</button>
+      <button data-range="90">近 90 天</button>
+      <button data-range="all">全部</button>
+    </div>
+  </section>
+
+  <section class="stats" aria-label="统计摘要">
+    <div class="stat"><div class="stat-label">周期内稿件</div><div class="stat-value" id="total">—</div></div>
+    <div class="stat"><div class="stat-label">有发稿省级区</div><div class="stat-value" id="covered">—</div></div>
+    <div class="stat"><div class="stat-label">发稿最多</div><div class="stat-value" id="leader">—</div></div>
+    <div class="stat"><div class="stat-label">全国/未标注</div><div class="stat-value" id="unassigned">—</div></div>
+  </section>
+
+  <section class="chart-card">
+    <div class="chart-head"><strong id="range-label">加载中…</strong><span id="source-label">档案 Markdown 真源</span></div>
+    <div class="chart-body">
+      <div class="axis" aria-hidden="true"><span></span><span></span><div class="axis-scale"><span>0</span><span id="axis-max">—</span></div><span>篇</span></div>
+      <div id="bar-chart" class="bar-chart" aria-label="各省发稿数量条形图"></div>
+    </div>
+    <div class="legend-row"><span>篇数</span><span>少</span><span class="gradient" aria-hidden="true"></span><span>多</span><span id="max-label"></span></div>
+    <div id="detail" class="detail"><strong id="detail-name">—</strong><span class="detail-count" id="detail-count">—</span><span id="detail-copy">点击链接进入对应地区筛选</span><a id="detail-link" href="#" target="_blank" rel="noreferrer">打开资料库筛选 ↗</a></div>
+  </section>
+  <p class="note">统计口径：总篇数按稿件计一次；一篇稿件若地区跨多个省级区，则在对应省级区各计一次；地区为空的稿件归入“全国/未标注”。香港、澳门不列入本图。本页为本地视觉原型，未修改线上页面。</p>
+</main>
+<script>
+(() => {
+  const PROVINCES = [
+    ["北京", "北京市"], ["天津", "天津市"], ["河北", "河北省"], ["山西", "山西省"],
+    ["内蒙古", "内蒙古自治区"], ["辽宁", "辽宁省"], ["吉林", "吉林省"], ["黑龙江", "黑龙江省"],
+    ["上海", "上海市"], ["江苏", "江苏省"], ["浙江", "浙江省"], ["安徽", "安徽省"],
+    ["福建", "福建省"], ["江西", "江西省"], ["山东", "山东省"], ["河南", "河南省"],
+    ["湖北", "湖北省"], ["湖南", "湖南省"], ["广东", "广东省"], ["广西", "广西壮族自治区"],
+    ["海南", "海南省"], ["重庆", "重庆市"], ["四川", "四川省"], ["贵州", "贵州省"],
+    ["云南", "云南省"], ["西藏", "西藏自治区"], ["陕西", "陕西省"], ["甘肃", "甘肃省"],
+    ["青海", "青海省"], ["宁夏", "宁夏回族自治区"], ["新疆", "新疆维吾尔自治区"],
+    ["台湾", "台湾省"]
+  ];
+  const PROVINCE_KEYS = new Set(PROVINCES.map(([key]) => key));
+  const $ = id => document.getElementById(id);
+  const from = $("from"), to = $("to"), chart = $("bar-chart");
+  let data;
+  let current = { counts: {}, total: 0, unassigned: 0, from: "", to: "", max: 0, leader: ["—", 0] };
+
+  function fmtDate(s) { return s ? s.replace(/-/g, ".") : "—"; }
+  function aggregate(start, end) {
+    const selected = data.dates.filter(d => d.date >= start && d.date <= end);
+    const counts = {};
+    let total = 0, unassigned = 0;
+    for (const day of selected) {
+      total += day.total || 0;
+      unassigned += day.unassigned || 0;
+      for (const [province, n] of Object.entries(day.counts || {})) {
+        if (province === "香港" || province === "澳门") continue;
+        counts[province] = (counts[province] || 0) + n;
+      }
+    }
+    const sorted = PROVINCES
+      .map(([key]) => [key, counts[key] || 0])
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-CN"));
+    return {
+      counts,
+      total,
+      unassigned,
+      from: start,
+      to: end,
+      max: sorted[0]?.[1] || 0,
+      leader: sorted[0] || ["—", 0]
+    };
+  }
+  function setStat(id, value, unit) {
+    $(id).innerHTML = `${value}<small> ${unit}</small>`;
+  }
+  function apply() {
+    if (!data) return;
+    let start = from.value || data.dates[0].date;
+    let end = to.value || data.dates[data.dates.length - 1].date;
+    if (start > end) [start, end] = [end, start];
+    from.value = start;
+    to.value = end;
+    current = aggregate(start, end);
+    const covered = PROVINCES.filter(([key]) => (current.counts[key] || 0) > 0).length;
+    setStat("total", current.total, "篇");
+    setStat("covered", covered, "个省级区");
+    setStat("leader", current.leader[0], `${current.leader[1]} 篇`);
+    setStat("unassigned", current.unassigned, "篇");
+    $("range-label").textContent = `${fmtDate(start)} — ${fmtDate(end)}`;
+    $("axis-max").textContent = `${current.max}`;
+    $("max-label").textContent = `本周期最大值 ${current.max} 篇`;
+    renderBars();
+    hideDetail();
+  }
+  function renderBars() {
+    const rows = PROVINCES
+      .map(([key, full]) => ({ key, full, value: current.counts[key] || 0 }))
+      .sort((a, b) => b.value - a.value || a.key.localeCompare(b.key, "zh-CN"));
+    chart.innerHTML = "";
+    rows.forEach((row, index) => {
+      const item = document.createElement("div");
+      item.className = `bar-row${row.value === 0 ? " zero" : ""}`;
+      item.tabIndex = 0;
+      item.dataset.key = row.key;
+      item.style.setProperty("--width", current.max ? `${(row.value / current.max * 100).toFixed(2)}%` : "0%");
+      item.setAttribute("aria-label", `${row.key} ${row.value} 篇`);
+      item.innerHTML = `<span class="rank">${index + 1}</span><span class="bar-label">${row.key}</span><span class="bar-track"><span class="bar-fill"></span></span><span class="bar-value">${row.value}</span>`;
+      item.addEventListener("click", () => showDetail(item));
+      item.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          showDetail(item);
+        }
+      });
+      chart.appendChild(item);
+    });
+  }
+  function hideDetail() {
+    $("detail").classList.remove("show");
+    chart.querySelectorAll(".selected").forEach(row => row.classList.remove("selected"));
+  }
+  function showDetail(item) {
+    const key = item.dataset.key;
+    const n = current.counts[key] || 0;
+    chart.querySelectorAll(".selected").forEach(row => row.classList.remove("selected"));
+    item.classList.add("selected");
+    $("detail-name").textContent = key;
+    $("detail-count").textContent = `${n} 篇`;
+    $("detail-copy").textContent = `${fmtDate(current.from)}—${fmtDate(current.to)} · 点击链接进入地区筛选`;
+    const full = PROVINCES.find(p => p[0] === key)?.[1] || key;
+    $("detail-link").href = `https://cfzx.xiyuan.wiki/db?region=${encodeURIComponent(full)}`;
+    $("detail").classList.add("show");
+  }
+  function quick(days) {
+    const end = data.dates[data.dates.length - 1].date;
+    if (days === "all") {
+      from.value = data.dates[0].date;
+      to.value = end;
+    } else {
+      const endDate = new Date(`${end}T00:00:00`);
+      endDate.setDate(endDate.getDate() - Number(days) + 1);
+      const candidate = endDate.toISOString().slice(0, 10);
+      from.value = data.dates.find(d => d.date >= candidate)?.date || data.dates[0].date;
+      to.value = end;
+    }
+    apply();
+  }
+  $("apply").addEventListener("click", apply);
+  document.querySelectorAll("[data-range]").forEach(button => button.addEventListener("click", () => quick(button.dataset.range)));
+  fetch("data.json")
+    .then(response => {
+      if (!response.ok) throw new Error(`data.json ${response.status}`);
+      return response.json();
+    })
+    .then(json => {
+      data = json;
+      const first = data.dates[0].date;
+      const last = data.dates[data.dates.length - 1].date;
+      from.min = first; from.max = last;
+      to.min = first; to.max = last;
+      from.value = first; to.value = last;
+      $("source-label").textContent = `本地档案 · ${data.articleFiles} 篇文件`;
+      apply();
+    })
+    .catch(error => {
+      $(".chart-card").innerHTML = `<div class="error">无法加载统计数据：${error.message}<br>请通过本地 HTTP 服务打开此预览，而不是直接双击 HTML。</div>`;
+    });
+})();
+</script>
+<script src="/auth.js"></script>
+</body>
+</html>

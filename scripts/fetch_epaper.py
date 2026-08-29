@@ -674,6 +674,12 @@ KNOWN_AUTHORS = {
     "于佳卉", "刘亚奇", "刘志丰", "张小雅", "张涛", "张深寿", "张烁", "李笛", "林强",
     "汪澜", "王润旋", "胡启瑞", "谷皓东", "郑俊锦", "郑新倩", "闫岩", "雷美",
 
+    # 20260828 新增（审核确认）
+    "张夕迪", "刘艾希", "杨玉平", "黄婧怡", "徐阳", "吴肖燕", "樊英帅",
+    "岳宗旗", "王裕平", "宫明晓", "张文碧", "李文泓", "张晓露", "易亮", "成利敏",
+    "张晓梅", "滕玉鹏", "李昕雨", "索文婷", "周彦华", "闫伟兄", "郑艺雯", "黎晓艳",
+    "陈胜军", "赵伟", "焦志敏", "李庆雷", "陈仲榆", "叶冬", "李天诚", "张志立",
+
 }
 
 # 姓氏先验：库内已知名首字频率（大姓如王李张刘陈频率高 → 更可信）
@@ -885,6 +891,8 @@ def html_clean(s):
     return re.sub(r"<[^>]+>", "", s).strip()
 
 def sanitize_filename(s):
+    # 文件名与标题同样禁止残留 HTML 实体（尤其是 &nbsp;）。
+    s = html_clean(str(s))
     return re.sub(r'[\\/:*?"<>|]', '', s)[:80]
 
 
@@ -1094,10 +1102,13 @@ def batch_fetch(date_str):
                 "bc": bc, "order": i+1
             })
     
-    # Step 2: 去重
+    # Step 2: 去重 (图片新闻各版独立，不去重)
     seen = set()
     unique = []
     for a in all_articles:
+        if a["title"] == "图片新闻":
+            unique.append(a)
+            continue
         if a["title"] not in seen:
             seen.add(a["title"])
             unique.append(a)
@@ -1169,11 +1180,14 @@ def main(date_str):
                 "words": a.get("TXS", "0"),
             })
 
-    # Step 3: 去重 (同标题只保留靠前版次)
+    # Step 3: 去重 (同标题只保留靠前版次；图片新闻各版独立，不去重)
     seen_titles = set()
     for p in pages:
         kept = []
         for a in p["articles"]:
+            if a["title_api"] == "图片新闻":
+                kept.append(a)
+                continue
             if a["title_api"] in seen_titles:
                 print(f"  去重 {p['page']}: '{a['title_api'][:30]}'")
                 continue
@@ -1223,7 +1237,8 @@ def main(date_str):
             if not data: continue
 
             order = idx + 1
-            title = (data.get("docTitle", "") or "").strip() or a["title_api"]
+            # 标题统一清理 HTML 实体（包括 &nbsp;），避免实体进入 frontmatter/文件名。
+            title = html_clean(str(data.get("docTitle") or "")) or html_clean(str(a.get("title_api") or ""))
             subtitle = data.get("fb", "")
             content_raw = data.get("content", "")
             content_text = clean_html(content_raw)
