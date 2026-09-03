@@ -22,10 +22,12 @@
   3. 拆分"要闻简报"类合并稿件
   4. 补副刊等 API 缺的作者名
 
-图片新闻标题规范 (2026-08 用户确认):
+图片新闻标题规范 (2026-08 用户确认；2026-08-29 起改为命名环节直接生成):
   - 所有图片新闻统一使用标题「图片新闻：XXXX」，XXXX 为内容概括短语（如"图片新闻：漳浦龙舟赛气象保障"）。
-  - 本脚本抓取时可能写为"图片新闻"、图注全文、或带"图片："前缀的标题；
-    统一由审核环节在确认概括后改成「图片新闻：XXXX」，并同步改文件名（序号-标题.md）与 frontmatter title。
+  - 抓取时由脚本调用文本 LLM（Nous Portal deepseek/deepseek-v4-flash，NOUS_API_KEY）将图注概括为
+    8-12 字短语，直接生成「图片新闻：XXXX」，同步用于 frontmatter title 与文件名，不留到审核环节；
+    审核只需微调概括短语。
+  - LLM 失败时回退为「图片新闻：<图注截断>」，仍保证格式合规。
   - 文件名禁止残留 HTML 实体、分隔符和多余符号（sanitize_filename 已处理）。
 """
 
@@ -73,7 +75,7 @@ SURNAMES = set(
 
 # 已知作者姓名库（经用户确认的准确分词），新作者名确认后加入
 KNOWN_AUTHORS = {
-    "丁昕彤", "于桐", "何静怡", "佟迎宾", "侯伟", "冀海鹰", "刘丽媛", "刘凯文", "刘庆忠", "刘淑乔",
+    "丁昕彤", "于桐", "何静怡", "佟迎宾", "刘莹莹", "包群力", "周建平", "周煜", "周璐", "姜清荣", "尚玉", "张蒙", "徐琳琳", "朱敏", "殷文涛", "石新丽", "赵娜君", "陈鹏", "霍苗", "侯伟", "冀海鹰", "刘丽媛", "刘凯文", "刘庆忠", "刘淑乔",
     "任轩伯", "侯月菊", "刘浩", "匡昕", "史德忠", "司鹏", "向文斌", "吕恒", "喻彦", "夏晶",
     "张校", "张葛", "成果", "晁瑗", "李颖冲", "栗丽", "沈晨", "牛斌", "王剑", "王天天",
     "王明亮", "王淼", "范从勇", "范凯锋", "蒙桂云", "蔡幸君", "赵慧", "邓超", "雒璇", "马豆英",
@@ -116,6 +118,7 @@ KNOWN_AUTHORS = {
     "任雪杰", "刘梦雨", "刘超", "吴永建", "吴羽翔", "廖利娟", "张思齐", "张珍珍", "张生梅", "施璐",
     "李义鑫", "李兰兰", "杨林梓", "梁俊聪", "王云亮", "王佳津", "程欢", "罗先猛", "范兴凯", "袁晶",
     "赵伟程", "邓碧娜", "邓钰洋", "郑羡仪", "金文雨", "陈星",
+    "周颖", "徐洋", "曾涛", "程卫疆", "罗剑飞", "谢娜", "陈樱之", "赵慧芳", "王彬雁", "周威", "高洁",
     "余勤", "刘思齐", "刘月", "周文凯", "周裕惠", "孙志清", "宣振华", "张一琼", "彭仕明", "易红梅",
     "李喆", "李婷", "李建坤", "李荣", "杨彦", "杨红龙", "柳东慧", "梁宇清", "王嘉豪", "王娟娟",
     "王蔚娜", "环海军", "罗天羿", "许小峰", "谷会娟", "邢世全", "郭鑫磊", "陈申鹏", "隆振宇", "马宁",
@@ -697,6 +700,30 @@ KNOWN_AUTHORS = {
     "王金华", "白松竹", "石佳豪", "石侃", "董丽萍", "许文清", "郭康军", "闫研",
     "陈静", "齐本新",
 
+    # 20260625 新增（审核确认）
+    "万雨菡", "冷雪峰", "刘可欣", "吴橦", "吴采霞", "周延彤", "孙阳", "宋柳贤",
+    "崔晓玉", "平凤", "张娜", "张永原", "张贺", "彭钰媛", "徐乐", "李晓桃",
+    "杨取宝", "欧春苗", "毛琪", "王永明", "王烈辉", "田盛林", "罗勇", "肖晶晶",
+    "胡俊峰", "赵宇涵", "韦宣羽", "韩雪瑞", "韩露露", "黄兰兰", "黄启开", "黄跃青",
+
+    # 20260626 新增（审核确认）
+    "么润琦", "于文超", "倪婷婷", "农艳青", "刘宁宁", "刘岩", "刘洁", "刘金福",
+    "华雯丽", "安力珺", "康鹤", "张亚青", "张立", "张立清", "李秀玲", "杨小芳",
+    "林梅香", "段二平", "王春学", "王瑶", "苏少青", "谢定坤", "费玉娟", "赵平",
+    "陈家辉", "陈梦瑶", "黄忠", "黄玉学", "黄莹",
+
+    # 20260630 新增（审核确认）
+    "吴瑾", "姜筱玮", "张万东", "张心如", "李彦", "杨帆", "王子健", "王晶",
+    "王霞", "王颖", "石美亮", "罗俊", "范伟", "韩菲",
+
+    # 20260831 新增（审核确认）
+    "刘近森", "张立朋", "朱丽娅", "王远谋", "莫吾燕", "董钰春", "蔡德攀", "邓亚丽",
+    "邬芸", "金云国", "陈继飞", "黄兰",
+
+    # 20260902 新增（审核确认）
+    "王淞秋", "王箫鹏", "张飞", "张杰", "林小红", "董玲", "蒋丽敏",
+    "许卉昕", "许宁超", "谭可欣", "陈新娇",
+
 }
 
 # 姓氏先验：库内已知名首字频率（大姓如王李张刘陈频率高 → 更可信）
@@ -722,6 +749,73 @@ def curl_post(url, data):
         return json.loads(r.stdout)
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
+
+
+# ===== 图片新闻标题概括（文本 LLM：Nous Portal deepseek/deepseek-v4-flash）=====
+LLM_API_BASE = "https://inference-api.nousresearch.com/v1/chat/completions"
+LLM_MODEL = "deepseek/deepseek-v4-flash"
+
+
+def _load_env_file(path):
+    env = {}
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                m = re.match(r'^\s*([^#=]+)=(.*)$', line)
+                if m:
+                    env[m.group(1).strip()] = m.group(2).strip().strip('"').strip("'")
+    return env
+
+
+def _llm_key():
+    home = _load_env_file(os.path.join(os.path.expanduser("~"), ".pi", "agent", ".env"))
+    if home.get("NOUS_API_KEY"):
+        return home["NOUS_API_KEY"]
+    if os.environ.get("NOUS_API_KEY"):
+        return os.environ["NOUS_API_KEY"]
+    proj = _load_env_file(os.path.join(PROJECT_ROOT, ".env"))
+    return (proj.get("NOUS_API_KEY") or proj.get("OPENCODE_GO_API_KEY")
+            or os.environ.get("OPENCODE_GO_API_KEY"))
+
+
+def summarize_pic_title(caption):
+    """图注 → 8-12 字内容概括短语（图片新闻标题 XXXX 部分）；失败返回空串。"""
+    key = _llm_key()
+    if not key:
+        return ""
+    caption = re.sub(r'^[◀▼▶▲◆]\s*', '', (caption or "")).strip()
+    if not caption:
+        return ""
+    prompt = (
+        "这是《中国气象报》一条图片新闻的图注：\n"
+        f"{caption[:300]}\n\n"
+        "请用 8-12 个汉字概括这条图片新闻的核心内容，格式为「地点+主题」，"
+        "如「遂溪海洋牧场投放海气观测浮标」「漳浦龙舟赛气象保障」。"
+        "不要输出引号、标点或任何解释，只输出概括短语。"
+    )
+    payload = json.dumps({
+        "model": LLM_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 60,
+    })
+    try:
+        r = subprocess.run(
+            ["curl", "-s", "--connect-timeout", "10", "--max-time", "30",
+             "-H", f"Authorization: Bearer {key}",
+             "-H", "Content-Type: application/json",
+             "-d", payload, LLM_API_BASE],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=40,
+        )
+        if r.returncode != 0:
+            return ""
+        data = json.loads(r.stdout)
+        content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+        content = re.sub(r'[\s"“”\'‘’、。，：:；]+', '', content).strip()
+        if 2 <= len(content) <= 20:
+            return content
+    except Exception as e:
+        print(f"  ⚠ 图片新闻概括失败: {e}", file=sys.stderr)
+    return ""
 
 
 def clean_html(text):
@@ -891,6 +985,162 @@ def split_authors(author):
     return ' '.join(result)
 
 
+# 文章内显式署名角色。漫评常见格式：策划创作/甲乙文/丙，不能只取 docAuthor。
+_AUTHOR_CREDIT_ROLE_RE = re.compile(
+    r"(策划创作|制图|摄影|绘画|文字|撰文|创作|策划|文|图)\s*[/:：]"
+)
+_AUTHOR_CREDIT_START_RE = re.compile(
+    r"(?:^|[\n。；;])\s*(策划创作|制图|摄影|绘画|文字|撰文|创作|策划|文|图)\s*[/:：]",
+    re.MULTILINE,
+)
+
+
+def _add_author_names(target, raw, strict=False):
+    """将一个作者串拆分后并入 target，保留顺序并去重。"""
+    if not raw:
+        return
+    if isinstance(raw, (list, tuple)):
+        candidates = [str(item).strip() for item in raw if str(item).strip()]
+    else:
+        candidates = split_authors(str(raw)).split()
+    for name in candidates:
+        if not name or name in target:
+            continue
+        if not (2 <= len(name) <= 4 or '·' in name):
+            if strict:
+                print(f"  ⚠ 显式署名拆分异常，需人工复核: {name}", file=sys.stderr)
+            continue
+        if strict and name not in KNOWN_AUTHORS and name[0] not in SURNAMES and '·' not in name:
+            print(f"  ⚠ 显式署名疑似非姓名，需人工复核: {name}", file=sys.stderr)
+            continue
+        target.append(name)
+
+
+def _extract_role_credit_authors(content_text):
+    """提取正文中明确的策划/文/图等角色署名，返回按出现顺序的姓名。"""
+    names = []
+    for start_match in _AUTHOR_CREDIT_START_RE.finditer(content_text):
+        start = start_match.start(1)
+        line_end = content_text.find("\n", start)
+        if line_end < 0:
+            line_end = len(content_text)
+        block = content_text[start:line_end]
+        markers = list(_AUTHOR_CREDIT_ROLE_RE.finditer(block))
+        for i, marker in enumerate(markers):
+            end = markers[i + 1].start() if i + 1 < len(markers) else len(block)
+            raw = block[marker.end():end]
+            raw = re.split(r"[。；;]", raw, maxsplit=1)[0].strip(" \t、，,")
+            if raw:
+                _add_author_names(names, raw, strict=True)
+    return names
+
+
+def extract_authors(data, content_text, final_title="", is_pic=False):
+    """统一提取作者：合并 API、正文署名和漫评/图片角色署名。"""
+    primary = ""
+    doc_author = data.get("docAuthor", "") or ""
+    if doc_author:
+        primary = re.sub(r"^(新华社|本报)(特约)?(记者|通\s*讯\s*员)?\s*", "", str(doc_author)).strip()
+        primary = re.sub(r"《[^》]+》记者[\u4e00-\u9fff]{2,4}\s*", "", primary).strip()
+        primary = re.sub(r"《[^》]+》", "", primary).strip()
+        if re.search(r"[上下]转", primary):
+            primary = ""
+        primary = re.sub(r"(?:实习|特约)?\s*(?:记者|通\s*讯\s*员)\s*", " ", primary).strip()
+        primary = re.sub(r"(?:实习|特约)?(?:记者|通\s*讯\s*员|评论员)\s*$", "", primary).strip()
+        primary = re.sub(r"^来源[：:][^，。]*?编译[：:]\s*", "", primary).strip()
+        primary = re.sub(r"(?:报道|文|图)?\s*(?:受|连日来|近日|日前|随着|面对|今年|截至|目前|正值|汛期)\s*$", "", primary).strip()
+        primary = re.sub(r"(?:报道|文|图)\s*$", "", primary).strip()
+
+    names = []
+    role_names = _extract_role_credit_authors(content_text)
+    # 角色署名位于正文末尾，按版面署名顺序优先；再合并 API/正文记者名。
+    _add_author_names(names, role_names)
+    _add_author_names(names, primary)
+
+    # 正文开头记者/通讯员署名：即使已有 docAuthor 也合并，避免 API 漏人。
+    lead = ""
+    m2 = re.search(
+        r"(?:本报讯|本报)\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*"
+        r"([\u4e00-\u9fff· ]+?)(?:\s*报道|，|\n)",
+        content_text[:300],
+    )
+    if not m2:
+        m2 = re.search(
+            r"(?:本报讯|本报)\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)?\s*"
+            r"([\u4e00-\u9fff· ]+)",
+            content_text[:200],
+        )
+    if m2:
+        lead = re.sub(r"\s+", " ", m2.group(1).strip())
+        lead = re.sub(r"\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*", " ", lead).strip()
+        lead = re.sub(r"(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者|评论员)\s*$", "", lead).strip()
+        lead = re.sub(r"^来源[：:][^，。]*?编译[：:]\s*", "", lead).strip()
+        if re.search(r"^(本报\s*)?(评论员|记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*$", lead):
+            lead = ""
+        lead = re.sub(
+            r"\s+(受|连日来|近日|日前|随着|今年|今年第|今年以来|截至|目前|正值|汛期|编者按|最近|超长|连日|眼下|当前|进入)\s*$",
+            "",
+            lead,
+        ).strip()
+        lead = re.sub(r"\s+第\d+号?\s*$", "", lead).strip()
+    if lead:
+        if len(lead.replace(" ", "")) > 4:
+            lead = split_authors(lead)
+        segments = lead.split()
+        if not (
+            all(2 <= len(seg) <= 4 for seg in segments)
+            and all(seg in KNOWN_AUTHORS or seg[0] in SURNAMES for seg in segments)
+        ):
+            lead = ""
+    _add_author_names(names, lead)
+
+    # 漫评/图片新闻的图文署名可能不在正文首尾括号中；作为角色署名补充扫描。
+    is_cartoon = "漫评" in str(final_title) or bool(re.search(r"策划创作\s*[/:：]", content_text))
+    if is_pic or is_cartoon:
+        photo_authors = re.findall(
+            r"(?:图|文|制图)[/:：]\s*([\u4e00-\u9fff·]{2,4}?)(?=(?:文|图|制图)[/:：]|\n|$)",
+            content_text,
+            re.MULTILINE,
+        )
+        _add_author_names(names, photo_authors, strict=True)
+    if (is_cartoon or re.search(r"(?:图|文|制图)[/:：]", content_text)) and not role_names and not names:
+        print("  ⚠ 检测到显式图文/策划署名但未提取到作者，需人工复核", file=sys.stderr)
+
+    # 低优先级回退：尾部整理/编译/括号署名，仅在前述来源均为空时使用。
+    if not names:
+        fallback = ""
+        m = re.search(r"（([^）]+整理)）\s*$", content_text)
+        if m:
+            fallback = re.sub(r"整理\s*$", "", m.group(1)).strip()
+        if not fallback:
+            m = re.search(r"（编译[：:]\s*([\u4e00-\u9fff·、]+?)(?:来源|[）)]|$)", content_text)
+            if m:
+                fallback = m.group(1).strip()
+        if not fallback:
+            m = re.search(r"（来源[：:][^）]*?编译[：:]\s*([\u4e00-\u9fff·、]+)", content_text)
+            if m:
+                fallback = m.group(1).strip()
+        if not fallback:
+            m = re.search(r"（([\u4e00-\u9fff·\s]{2,}?)）\s*$", content_text, re.MULTILINE)
+            if m:
+                candidate = re.sub(r"\s+", " ", m.group(1)).strip()
+                if not re.search(r"(?:作者)?系|担任|职务|记者|通\s*讯\s*员|副县长|县长|局长|部长|书记|主任", candidate):
+                    fallback = candidate
+        if not fallback:
+            m = re.search(r"（(?:调研组成员?|作者)[：:]\s*([\u4e00-\u9fff·、]+)）", content_text)
+            if m:
+                fallback = " ".join(n.strip() for n in re.split(r"[、，,]", m.group(1)) if n.strip())
+        _add_author_names(names, fallback)
+
+    if not names:
+        first_line = content_text.split("\n")[0].strip()
+        if first_line and 2 <= len(first_line) <= 4 and not re.match(r"^(本报讯|本报|新华社|图为|编者)", first_line):
+            _add_author_names(names, first_line)
+    if not names and re.search(r"^本报评论员", content_text[:30]) and not re.search(r"本报(记者|通\s*讯\s*员)", content_text[:30]):
+        return ""
+    return " ".join(names)
+
+
 def extract_region(title, body):
     for k, v in CITY_REGION.items():
         if k in title: return v
@@ -955,82 +1205,8 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
             final_title = "图片新闻"
         is_pic = True
 
-    # 作者处理 (略去 简报拆分 等批量特有逻辑)
-    author = ""
-    doc_author = data.get("docAuthor", "")
-    if doc_author:
-        author = re.sub(r'^(新华社|本报)(特约)?(记者|通\s*讯\s*员)?\s*', '', doc_author).strip()
-        author = re.sub(r'《[^》]+》记者[\u4e00-\u9fff]{2,4}\s*', '', author).strip()
-        author = re.sub(r'《[^》]+》', '', author).strip()
-        if re.search(r'[上下]转', author): author = ""
-        # 清理作者串中残留的职称（正文提取路径已做，docAuthor 路径也要做）
-        # 不依赖空格边界："实习记者""特约记者"等胶连职称也清除
-        author = re.sub(r'(?:实习|特约)?\s*(?:记者|通\s*讯\s*员)\s*', ' ', author).strip()
-        author = re.sub(r'(?:实习|特约)?(?:记者|通\s*讯\s*员|评论员)\s*$', '', author).strip()
-        author = re.sub(r'^来源[：:][^，。]*?编译[：:]\s*', '', author).strip()
-        # 尾部"报道/近日/连日来"等正文词：不依赖空格边界（如"刘雅琪报道近日"）
-        author = re.sub(r'(?:报道|文|图)?\s*(?:受|连日来|近日|日前|随着|面对|今年|截至|目前|正值|汛期)\s*$', '', author).strip()
-        author = re.sub(r'(?:报道|文|图)\s*$', '', author).strip()
-    # 正文开头署名提取：docAuthor 非空也执行，合并去重（API 可能漏记者/通讯员）
-    _lead = ""
-    _m2 = re.search(r'(?:本报讯|本报)\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*([\u4e00-\u9fff· ]+?)(?:\s*报道|，|\n)', content_text[:300])
-    if not _m2:
-        _m2 = re.search(r'(?:本报讯|本报)\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)?\s*([\u4e00-\u9fff· ]+)', content_text[:200])
-    if _m2:
-        _lead = re.sub(r'\s+', ' ', _m2.group(1).strip())
-        _lead = re.sub(r'\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*', ' ', _lead).strip()
-        _lead = re.sub(r'(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者|评论员)\s*$', '', _lead).strip()
-        _lead = re.sub(r'^来源[：:][^，。]*?编译[：:]\s*', '', _lead).strip()
-        if re.search(r'^(本报\s*)?(评论员|记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*$', _lead):
-            _lead = ""
-        _lead = re.sub(r'\s+(受|连日来|近日|日前|随着|面对|今年|今年第|今年以来|截至|目前|正值|汛期|编者按|最近|超长|连日|眼下|当前|进入)\s*$', '', _lead).strip()
-        _lead = re.sub(r'\s+第\d+号?\s*$', '', _lead).strip()
-    if _lead:
-        # 胶连多名（无空格，如“李红梅李岩涛郭春燕”）先用锚点法分词再校验
-        if len(_lead.replace(' ', '')) > 4:
-            _lead = split_authors(_lead)
-        # 人名校验：每段须为 2-4 字且首字是常见姓氏或已入库；否则 LEAD 不可靠，宁缺勿错（走文末/人工）
-        _segs = _lead.split()
-        if not (all(2 <= len(s) <= 4 for s in _segs) and all(s in KNOWN_AUTHORS or s[0] in SURNAMES for s in _segs)):
-            _lead = ""
-    if _lead:
-        # docAuthor 胶连名先分词，避免与正文署名合并时重复（如“冀涛段宸宇贾亚飞”+正文同名）
-        if author and len(author.replace(' ', '')) > 4:
-            author = split_authors(author)
-        _names = author.split() if author else []
-        for _n in _lead.split():
-            if _n and _n not in _names:
-                _names.append(_n)
-        author = ' '.join(_names)
-    if not author:
-        m = re.search(r'（([^）]+整理)）\s*$', content_text)
-        if m: author = re.sub(r'整理\s*$', '', m.group(1)).strip()
-        if not m: m = re.search(r'（编译[：:]\s*([\u4e00-\u9fff·、]+?)(?:来源|[）)]|$)', content_text)
-        if m and not author: author = m.group(1).strip()
-        if not m: m = re.search(r'（来源[：:][^）]*?编译[：:]\s*([\u4e00-\u9fff·、]+)', content_text)
-        if not m: m = re.search(r'（([\u4e00-\u9fff·\s]{2,}?)）\s*$', content_text, re.MULTILINE)
-        if m and not author:
-            candidate = re.sub(r'\s+', ' ', m.group(1)).strip()
-            # 职务/说明性括号（"作者系…副县长"等）不是署名
-            if not re.search(r'(?:作者)?系|担任|职务|记者|通\s*讯\s*员|副县长|县长|局长|部长|书记|主任', candidate):
-                author = candidate
-        if not m: m = re.search(r'（(?:调研组成员?|作者)[：:]\s*([\u4e00-\u9fff·、]+)）', content_text)
-        if m and not author: author = ' '.join(n.strip() for n in re.split(r'[、，,]', m.group(1)) if n.strip())
-        if not m:
-            pa = re.findall(r'(?:图|文|制图)[/:]\s*([\u4e00-\u9fff·]{2,4}?)(?=(?:文|图|制图)/|\n|$)', content_text, re.MULTILINE)
-            if pa: author = ' '.join(dict.fromkeys(
-                re.sub(r'^文', '', n).strip() for n in pa if re.sub(r'^文', '', n).strip()
-            ))
-            # 仅标"本报评论员"无实际作者时清空
-            if not author and re.search(r'^本报评论员', content_text[:30]) and not re.search(r'本报(记者|通\s*讯\s*员)', content_text[:30]): author = ""
-            author = re.sub(r'\s+(受|连日来|近日|日前|随着|面对|今年|截至|目前|正值|汛期)\s*$', '', author).strip()
-    if not author:
-        fl = content_text.split("\n")[0].strip()
-        if fl and 2 <= len(fl) <= 4 and not re.match(r'^(本报讯|本报|新华社|图为|编者)', fl):
-            author = split_authors(fl)
-    if author.lower() in ("null", "none"):
-        author = ""
-    author = split_authors(author)
+    # 作者处理：普通抓取与单篇重抓共用，显式角色署名会与 API/正文署名合并。
+    author = extract_authors(data, content_text, final_title, is_pic)
 
     ed_type = edition_type(theme)
     # 地区提取
@@ -1289,7 +1465,18 @@ def main(date_str):
                     pic_title = first[:30]
                     is_pic = True
 
-            final_title = pic_title if is_pic else title
+            if is_pic:
+                # 命名环节直接生成「图片新闻：XXXX」（文本 LLM 概括图注，8-12 字）
+                summary = summarize_pic_title(content_text or pic_title)
+                if summary:
+                    final_title = f"图片新闻：{summary}"
+                elif pic_title.startswith("图片新闻"):
+                    final_title = pic_title
+                else:
+                    tail = re.sub(r'^\s*(?:[0-9]+月[0-9]+日，?|近日|日前|连日来|今年以来|今年|昨日|当天)\s*', '', pic_title)
+                    final_title = f"图片新闻：{tail[:15]}"
+            else:
+                final_title = title
 
             # 要闻简报拆分：正文含多条"本报讯"的合并简报按条拆分
             if "要闻简报" in final_title and content_text.count("本报讯") > 1:
@@ -1348,81 +1535,8 @@ def main(date_str):
                         # 跳过合并文件的生成
                         continue
 
-            # 作者处理
-            author = ""
-            doc_author = data.get("docAuthor", "")
-            if doc_author:
-                author = re.sub(r'^(新华社|本报)(特约)?(记者|通\s*讯\s*员)?\s*', '', doc_author).strip()
-                # 去掉其他媒体记者，如《中国应急管理报》记者张三
-                author = re.sub(r'《[^》]+》记者[\u4e00-\u9fff]{2,4}\s*', '', author).strip()
-                # 去掉残留的《》内容
-                author = re.sub(r'《[^》]+》', '', author).strip()
-                # "下转第三版"/"上接第一版"等排版信息不是作者
-                if re.search(r'[上下]转', author):
-                    author = ""
-            # 正文开头署名提取：docAuthor 非空也执行，合并去重（API 可能漏记者/通讯员）
-            _lead = ""
-            _m2 = re.search(r'(?:本报讯|本报)\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*([\u4e00-\u9fff· ]+?)(?:\s*报道|，|\n)', content_text[:300])
-            if not _m2:
-                _m2 = re.search(r'(?:本报讯|本报)\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)?\s*([\u4e00-\u9fff· ]+)', content_text[:200])
-            if _m2:
-                _lead = re.sub(r'\s+', ' ', _m2.group(1).strip())
-                _lead = re.sub(r'\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*', ' ', _lead).strip()
-                _lead = re.sub(r'(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者|评论员)\s*$', '', _lead).strip()
-                _lead = re.sub(r'^来源[：:][^，。]*?编译[：:]\s*', '', _lead).strip()
-                if re.search(r'^(本报\s*)?(评论员|记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*$', _lead):
-                    _lead = ""
-                _lead = re.sub(r'\s+(受|连日来|近日|日前|随着|面对|今年|今年第|今年以来|截至|目前|正值|汛期|编者按|最近|超长|连日|眼下|当前|进入)\s*$', '', _lead).strip()
-            _lead = re.sub(r'\s+第\d+号?\s*$', '', _lead).strip()
-            if _lead:
-                # 胶连多名（无空格，如“王彬乔斌曹晓云周秉荣”）先用锚点法分词再校验（与单篇路径对齐）
-                if len(_lead.replace(' ', '')) > 4:
-                    _lead = split_authors(_lead)
-                # 人名校验：每段须为 2-4 字且首字是常见姓氏或已入库；否则 LEAD 不可靠，宁缺勿错（走文末/人工）
-                _segs = _lead.split()
-                if not (all(2 <= len(s) <= 4 for s in _segs) and all(s in KNOWN_AUTHORS or s[0] in SURNAMES for s in _segs)):
-                    _lead = ""
-            if _lead:
-                # docAuthor 胶连名先分词，避免与正文署名合并时重复（如“冀涛段宸宇贾亚飞”+正文同名）
-                if author and len(author.replace(' ', '')) > 4:
-                    author = split_authors(author)
-                _names = author.split() if author else []
-                for _n in _lead.split():
-                    if _n and _n not in _names:
-                        _names.append(_n)
-                author = ' '.join(_names)
-            if not author:
-                # 尝试从正文末尾提取(整理)或(XX)
-                m = re.search(r'（([^）]+整理)）\s*$', content_text)
-                if m: author = re.sub(r'整理\s*$', '', m.group(1)).strip()
-                if not m:
-                    m = re.search(r'（编译[：:]\s*([\u4e00-\u9fff·、]+?)(?:来源|[）)]|$)', content_text)
-                if m and not author: author = m.group(1).strip()
-                if not m:
-                    m = re.search(r'（来源[：:][^）]*?编译[：:]\s*([\u4e00-\u9fff·、]+)', content_text)
-                if m and not author: author = m.group(1).strip()
-                if not m:
-                    m = re.search(r'（([\u4e00-\u9fff·]{2,})）\s*$', content_text, re.MULTILINE)
-                if m and not author: author = m.group(1).strip()
-                if not m:
-                    # 图片新闻署名：提取全部 图/XX 作者（可能有多个）
-                    all_photo_authors = re.findall(r'(?:图|文|制图)[/:]\s*([\u4e00-\u9fff·]{2,4}?)(?=(?:文|图|制图)/|\n|$)', content_text, re.MULTILINE)
-                    if all_photo_authors:
-                        # 过滤掉"文"前缀（如图/文XX中"文"被当名字捕获）
-                        author = ' '.join(dict.fromkeys(
-                            re.sub(r'^文', '', n).strip() for n in all_photo_authors if re.sub(r'^文', '', n).strip()
-                        ))  # 去重保留顺序
-            # 最后兜底：正文首行单独成段的姓名
-            if not author:
-                first_line = content_text.split("\n")[0].strip()
-                if first_line and len(first_line) >= 2 and len(first_line) <= 4:
-                    # 检查是否是作者名（首行是姓名，后面是正文）
-                    if not re.match(r'^(本报讯|本报|新华社|图为|编者)', first_line):
-                        author = split_authors(first_line)
-            # 用姓氏启发式分割粘连的多作者名
-            if author.lower() in ("null", "none"):
-                author = ""
-            author = split_authors(author)
+            # 作者处理：普通抓取与单篇重抓共用，显式角色署名会与 API/正文署名合并。
+            author = extract_authors(data, content_text, final_title, is_pic)
 
             is_headline = (order == 1)  # 默认每版首篇为头条，有误再改
 

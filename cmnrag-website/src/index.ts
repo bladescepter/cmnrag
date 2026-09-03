@@ -2,6 +2,7 @@ import { buildFacetQuery } from "./archive/facets";
 import { buildArticleQuery } from "./archive/search";
 import { parseSearchRequest } from "./archive/request";
 import { parsePagination } from "./archive/pagination";
+import { aggregateDays, type ProvinceStatRow } from "./archive/stats";
 import { buildAnswerArticleIdQuery, buildVectorArticleFilter } from "./ai/answerFilters";
 import { buildRagSystemPrompt, buildRagUserPrompt, uniqueSourcesByArticle, type ConversationTurn, type RagSource } from "./ai/rag";
 import {
@@ -100,6 +101,11 @@ async function getArticle(id: string, env: Env) {
 	const result = await env.DB.prepare("SELECT article_id, source_path, title, subtitle, author, published_date, page, theme, edition_type, headline, image, column_name, region, content FROM articles WHERE article_id = ?").bind(id).first<Record<string, unknown>>();
 	if (!result) return error("not_found", 404);
 	return json({ ...result, author: parseList(result.author), column_name: parseList(result.column_name), region: parseList(result.region) });
+}
+
+async function listProvinceStats(env: Env) {
+	const result = await env.DB.prepare("SELECT published_date, region FROM articles").all<ProvinceStatRow>();
+	return json(aggregateDays(result.results));
 }
 
 type EmbeddingResponse = { data: number[][] };
@@ -212,6 +218,7 @@ export default {
 			if (url.pathname === "/api/answer" && request.method === "POST") return answerQuestion(request, env);
 			if (url.pathname === "/api/articles") return listArticles(url, env);
 			if (url.pathname.startsWith("/api/articles/")) return getArticle(decodeURIComponent(url.pathname.slice("/api/articles/".length)), env);
+			if (url.pathname === "/api/stats") return listProvinceStats(env);
 			return error("not_found", 404);
 		} catch (caught) {
 			console.error(caught);

@@ -99,13 +99,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(source_path) DO UPDATE SET article_id=excluded.article_id, source_sha256=excluded.source_sha256, type=excluded.type, source=excluded.source, title=excluded.title, subtitle=excluded.subtitle, author=excluded.author, published_date=excluded.published_date, page=excluded.page, theme=excluded.theme, edition_type=excluded.edition_type, headline=excluded.headline, image=excluded.image, column_name=excluded.column_name, region=excluded.region, content=excluded.content, imported_at=CURRENT_TIMESTAMP`, [article.articleId, article.sourcePath, article.sourceSha256, article.type, article.source, article.title, article.subtitle, JSON.stringify(article.author), article.date, article.page, article.theme, article.editionType, article.headline ? 1 : 0, article.image ? 1 : 0, JSON.stringify(article.columnName), JSON.stringify(article.region), article.content]);
 }
 
-// 铁律：6 月为测试数据，不上线（只上线 7、8 月及后续正式数据）。
-// 自动发现月份时排除 202606；显式指定 CMNRAG_MONTHS=202606 仍可强制导入（用于本地试验）。
-const TEST_MONTHS = new Set(["202606"]);
-
+// 6 月资料已完成审核，和其他月份一样属于正式数据；默认发现全部 YYYYMM 目录。
 async function discoverAllMonths(root: string): Promise<string[]> {
 	const entries = await readdir(root, { withFileTypes: true });
-	return entries.filter((entry) => entry.isDirectory() && /^\d{6}$/.test(entry.name) && !TEST_MONTHS.has(entry.name)).map((entry) => entry.name).sort();
+	return entries.filter((entry) => entry.isDirectory() && /^\d{6}$/.test(entry.name)).map((entry) => entry.name).sort();
 }
 
 async function main() {

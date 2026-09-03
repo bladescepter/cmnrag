@@ -34,7 +34,7 @@
 
 ## 数据范围与规范
 
-- 当前已入库：**2026 年 6 月至 8 月，共 1337 篇稿件**（202606 计 365 篇 / 202607 计 556 篇 / 202608 计 416 篇）
+- 当前已入库：**2026 年 6 月 1 日至今，共 1884 篇稿件**（202606 计 671 篇 / 202607 计 556 篇 / 202608 计 591 篇 / 202609 计 66 篇）
 - 数据真源：仓库内 `cmnrag/YYYYMM/YYYYMMDD/版面/序号-标题.md`，一篇稿件一个文件
 - 字段语义（`column` 栏目、`region` 主体地区、`theme` 版面主题等边界）见 [`cmnrag/FRONTMATTER.md`](cmnrag/FRONTMATTER.md)，**这是检索字段的权威定义**
 - 结构化问题（计数、筛选、列举）必须走 D1 精确查询，不能只靠向量检索或模型概括
@@ -69,7 +69,8 @@ npx wrangler dev --remote   # 直连线上 D1/Vectorize/Workers AI 调试
 数据导入（需要 `CLOUDFLARE_RAG_API_TOKEN` 环境变量，两个脚本均幂等）：
 
 ```bash
-# 全文与元数据入 D1（默认数据根为仓库内 cmnrag/；CMNRAG_MONTHS=202608 可限定月份）
+# 全文与元数据入 D1（默认数据根为仓库内 cmnrag/；留空导入全部 YYYYMM，CMNRAG_MONTHS=202608 可限定月份）
+# 同步清理所选月份中本地已删除/改名的旧文章及其向量
 npx tsx scripts/import-archive.ts
 
 # 正文分块 + bge-m3 向量入 Vectorize

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>更新日志 · 采访中心工具集</title>
+  <style>
+    :root { --ink:#14213d; --muted:#667085; --line:#dce3ec; --blue:#155eef; --bg:#f6f8fb; --card:#fff; }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif}
+    header{background:#123b72;color:#fff;padding:34px max(24px,calc((100vw - 1180px)/2));box-shadow:0 2px 8px #071b3930}
+    header h1{font-size:26px;margin:0 0 10px;font-weight:700}
+    header p{margin:0;color:#d5e5ff;font-size:14px;line-height:1.7}
+    main{max-width:820px;margin:30px auto;padding:0 24px}
+    .back{display:inline-block;margin-bottom:16px;color:var(--blue);font-size:13px;text-decoration:none}
+    .back:hover{text-decoration:underline}
+    .log-list{display:grid;gap:14px}
+    .log-entry{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;box-shadow:0 2px 8px #15233a0b}
+    .log-head{display:flex;align-items:baseline;gap:12px;margin-bottom:8px}
+    .log-date{color:#667085;font-size:13px;white-space:nowrap}
+    .log-title{font-size:17px;font-weight:700}
+    .log-summary{margin:0;color:var(--muted);font-size:14px;line-height:1.8}
+    .empty{padding:36px;text-align:center;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:12px}
+    footer{max-width:820px;margin:40px auto 30px;padding:0 24px;color:#98a2b3;font-size:12.5px;text-align:center}
+    @media(max-width:620px){main{padding:0 14px}.log-head{display:block}.log-date{display:block;margin-bottom:5px}}
+    /* 顶部导航栏（静态内联；auth.js 同款兜底）*/
+    #auth-bar{background:#0d2b52;color:#d5e5ff;font-size:13.5px;box-shadow:0 2px 8px #071b3930;position:sticky;top:0;z-index:40}
+    #auth-bar .auth-bar-inner{max-width:1180px;margin:0 auto;padding:10px 24px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px}
+    #auth-bar .auth-left{justify-self:start}
+    #auth-bar .auth-nav{justify-self:center;display:flex;gap:6px;align-items:center}
+    #auth-bar .auth-right{justify-self:end;display:flex;gap:14px;align-items:center}
+    #auth-bar .auth-home{color:#a8c7ff;text-decoration:none;font-weight:650;white-space:nowrap;padding:6px 0}
+    #auth-bar .auth-home:hover{color:#fff}
+    #auth-bar .auth-link{color:#d5e5ff;text-decoration:none;cursor:pointer;background:none;border:none;font-size:13.5px;padding:6px 12px;border-radius:6px;white-space:nowrap}
+    #auth-bar .auth-link:hover{color:#fff;background:#ffffff1a}
+    #auth-bar .auth-link.active{color:#fff;background:#ffffff1f;font-weight:650}
+    #auth-bar .auth-name{color:#cfe2ff;white-space:nowrap}
+    #auth-bar .auth-btn{padding:6px 0}
+    @media(max-width:860px){#auth-bar .auth-bar-inner{grid-template-columns:1fr auto;padding:8px 14px;gap:6px 12px}#auth-bar .auth-nav{grid-column:1/-1;grid-row:2;justify-self:center}}
+  </style>
+</head>
+<body>
+<div id="auth-bar"><div class="auth-bar-inner"><div class="auth-left"><a class="auth-home" href="/">‹ 返回主页</a></div><nav class="auth-nav"><a class="auth-link" href="/db">报纸资料库</a><a class="auth-link" href="/schedule">排班系统</a></nav><div class="auth-right"></div></div></div>
+<header><h1>更新日志</h1><p>采访中心工具集的功能与资料更新记录。</p></header>
+<main>
+  <a class="back" href="/">← 返回首页</a>
+  <section class="log-list" id="log-list"><div class="empty">正在加载更新日志…</div></section>
+</main>
+<footer>采访中心工具集 · 内部工具</footer>
+<script>
+const list = document.querySelector('#log-list');
+function render(entries) {
+  list.innerHTML = '';
+  if (!entries.length) {
+    list.innerHTML = '<div class="empty">暂无更新记录。</div>';
+    return;
+  }
+  for (const item of entries) {
+    const article = document.createElement('article');
+    article.className = 'log-entry';
+    const head = document.createElement('div');
+    head.className = 'log-head';
+    const date = document.createElement('time');
+    date.className = 'log-date';
+    date.dateTime = item.date || '';
+    date.textContent = item.dateLabel || item.date || '';
+    const title = document.createElement('h2');
+    title.className = 'log-title';
+    title.textContent = item.title || '';
+    const summary = document.createElement('p');
+    summary.className = 'log-summary';
+    summary.textContent = item.summary || '';
+    head.append(date, title);
+    article.append(head, summary);
+    list.append(article);
+  }
+}
+fetch('/changelog.json', { cache: 'no-store' })
+  .then((response) => { if (!response.ok) throw new Error('request failed'); return response.json(); })
+  .then((data) => render(Array.isArray(data.entries) ? data.entries : []))
+  .catch(() => { list.innerHTML = '<div class="empty">更新日志暂时无法加载。</div>'; });
+</script>
+<script src="/auth.js"></script>
+</body>
+</html>

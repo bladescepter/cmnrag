@@ -19,6 +19,10 @@
     .badge.ok{background:#eafaf1;color:#16794b}
     .badge.wip{background:#f2f4f7;color:#98a2b3}
     footer{max-width:1180px;margin:40px auto 30px;padding:0 24px;color:#98a2b3;font-size:12.5px;text-align:center}
+    .changelog-entry{display:grid;grid-template-columns:auto 1fr;gap:10px;font-size:12.5px;line-height:1.65;color:var(--muted)}
+    .changelog-date{color:#667085;white-space:nowrap}
+    .changelog-latest-title{font-size:14px;font-weight:650;color:var(--ink);line-height:1.45}
+    .changelog-latest-summary{margin:3px 0 0!important;font-size:13px!important;line-height:1.6!important}
     @media(max-width:860px){.cards{grid-template-columns:1fr}}
     /* 顶部导航栏（静态内联；auth.js 同款兜底）*/
     #auth-bar{background:#0d2b52;color:#d5e5ff;font-size:13.5px;box-shadow:0 2px 8px #071b3930;position:sticky;top:0;z-index:40}
@@ -47,12 +51,48 @@
       <div class="card-meta">数据均来自公开报道，不涉及保密内容。</div>
     </a>
     <a class="card" href="/schedule">
-      <div class="card-title">排班系统<span class="badge wip">建设中</span></div>
+      <div class="card-title">排班系统<span class="badge ok">可用</span></div>
       <p>自动按周期生成具有随机性的排班。</p>
+    </a>
+    <a class="card" href="/changelog" aria-label="查看更新日志">
+      <div class="card-title">更新日志</div>
+      <div id="latest-changelog">
+        <div class="changelog-entry"><time class="changelog-date" datetime="2026-09-03">2026年9月3日</time><div><div class="changelog-latest-title">6月资料上线与功能更新</div><p class="changelog-latest-summary">1. 上线6月报纸资料；2. 排班系统初步可用；3. 增设各省发稿数量统计栏目，入口在报纸资料库右侧，可直观查看各省发稿数量。</p></div></div>
+      </div>
+      <div class="card-meta">查看全部更新 →</div>
     </a>
   </section>
 </main>
 <footer>采访中心工具集 · 内部工具</footer>
+<script>
+(async () => {
+  const target = document.querySelector('#latest-changelog');
+  try {
+    const response = await fetch('/changelog.json', { cache: 'no-store' });
+    if (!response.ok) return;
+    const data = await response.json();
+    const latest = data.entries?.[0];
+    if (!latest) return;
+    target.innerHTML = '';
+    const entry = document.createElement('div');
+    entry.className = 'changelog-entry';
+    const date = document.createElement('time');
+    date.className = 'changelog-date';
+    date.dateTime = latest.date || '';
+    date.textContent = latest.dateLabel || latest.date || '';
+    const details = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'changelog-latest-title';
+    title.textContent = latest.title || '';
+    const summary = document.createElement('p');
+    summary.className = 'changelog-latest-summary';
+    summary.textContent = latest.summary || '';
+    details.append(title, summary);
+    entry.append(date, details);
+    target.append(entry);
+  } catch (_) {}
+})();
+</script>
 <script src="/auth.js"></script>
 </body>
 </html>

@@ -55,8 +55,6 @@
   .bar-row:hover .bar-fill, .bar-row:focus .bar-fill, .bar-row.selected .bar-fill { filter: saturate(1.16) brightness(.98); }
   .bar-value { color: #147eae; font-size: 14px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
   .bar-row.zero .bar-value { color: #a9bbc3; font-weight: 500; }
-  .legend-row { display: flex; align-items: center; gap: 11px; padding: 13px 8px 2px; color: #7b97a3; font-size: 12px; }
-  .gradient { width: 170px; height: 8px; border-radius: 99px; background: linear-gradient(90deg, #f5fbff, #dff3ff, #b8e6fb, #75c8ee, #268fc4); border: 1px solid #c9ebfa; }
   .detail { display: none; align-items: center; gap: 14px; margin-top: 12px; padding: 12px 15px; border: 1px solid #cceafa; border-radius: 10px; color: #5c7d8a; background: #f8fdff; font-size: 13px; }
   .detail.show { display: flex; }
   .detail strong { color: #147eae; font-size: 18px; }
@@ -111,7 +109,7 @@
       <h1>各省发稿数量</h1>
       <p class="subtitle">按省级区排序的发稿量 · 横向条形图 · 直接比较</p>
     </div>
-    <div class="badge">本地预览 · 未接入线上</div>
+    <div class="badge">线上实时数据</div>
   </header>
 
   <section class="toolbar" aria-label="日期筛选">
@@ -119,9 +117,10 @@
     <label>结束日期 <input id="to" type="date"></label>
     <button id="apply">应用筛选</button>
     <div class="quick">
-      <button data-range="30">近 30 天</button>
-      <button data-range="90">近 90 天</button>
-      <button data-range="all">全部</button>
+      <button data-range="30">近30天</button>
+      <button data-range="90">近90天</button>
+      <button data-range="180">近180天</button>
+      <button data-range="365">近1年</button>
     </div>
   </section>
 
@@ -138,10 +137,9 @@
       <div class="axis" aria-hidden="true"><span></span><span></span><div class="axis-scale"><span>0</span><span id="axis-max">—</span></div><span>篇</span></div>
       <div id="bar-chart" class="bar-chart" aria-label="各省发稿数量条形图"></div>
     </div>
-    <div class="legend-row"><span>篇数</span><span>少</span><span class="gradient" aria-hidden="true"></span><span>多</span><span id="max-label"></span></div>
     <div id="detail" class="detail"><strong id="detail-name">—</strong><span class="detail-count" id="detail-count">—</span><span id="detail-copy">点击链接进入对应地区筛选</span><a id="detail-link" href="#" target="_blank" rel="noreferrer">打开资料库筛选 ↗</a></div>
   </section>
-  <p class="note">统计口径：总篇数按稿件计一次；一篇稿件若地区跨多个省级区，则在对应省级区各计一次；地区为空的稿件归入“全国/未标注”。香港、澳门不列入本图。本页为本地视觉原型，未修改线上页面。</p>
+  <p class="note">统计口径：总篇数按稿件计一次；一篇稿件若地区跨多个省级区，则在对应省级区各计一次；地区为空的稿件归入“全国/未标注”。香港、澳门不列入本图。数据来自线上档案实时统计。</p>
 </main>
 <script>
 (() => {
@@ -206,7 +204,6 @@
     setStat("unassigned", current.unassigned, "篇");
     $("range-label").textContent = `${fmtDate(start)} — ${fmtDate(end)}`;
     $("axis-max").textContent = `${current.max}`;
-    $("max-label").textContent = `本周期最大值 ${current.max} 篇`;
     renderBars();
     hideDetail();
   }
@@ -251,23 +248,18 @@
   }
   function quick(days) {
     const end = data.dates[data.dates.length - 1].date;
-    if (days === "all") {
-      from.value = data.dates[0].date;
-      to.value = end;
-    } else {
-      const endDate = new Date(`${end}T00:00:00`);
-      endDate.setDate(endDate.getDate() - Number(days) + 1);
-      const candidate = endDate.toISOString().slice(0, 10);
-      from.value = data.dates.find(d => d.date >= candidate)?.date || data.dates[0].date;
-      to.value = end;
-    }
+    const endDate = new Date(`${end}T00:00:00`);
+    endDate.setDate(endDate.getDate() - Number(days) + 1);
+    const candidate = endDate.toISOString().slice(0, 10);
+    from.value = data.dates.find(d => d.date >= candidate)?.date || data.dates[0].date;
+    to.value = end;
     apply();
   }
   $("apply").addEventListener("click", apply);
   document.querySelectorAll("[data-range]").forEach(button => button.addEventListener("click", () => quick(button.dataset.range)));
-  fetch("data.json")
+  fetch("/api/stats", { cache: "no-store" })
     .then(response => {
-      if (!response.ok) throw new Error(`data.json ${response.status}`);
+      if (!response.ok) throw new Error(`/api/stats ${response.status}`);
       return response.json();
     })
     .then(json => {
@@ -276,12 +268,15 @@
       const last = data.dates[data.dates.length - 1].date;
       from.min = first; from.max = last;
       to.min = first; to.max = last;
-      from.value = first; to.value = last;
-      $("source-label").textContent = `本地档案 · ${data.articleFiles} 篇文件`;
-      apply();
+      $("source-label").textContent = `线上档案 · ${data.articleFiles} 篇`;
+      quick(30);
     })
     .catch(error => {
-      $(".chart-card").innerHTML = `<div class="error">无法加载统计数据：${error.message}<br>请通过本地 HTTP 服务打开此预览，而不是直接双击 HTML。</div>`;
+      if (error.message.includes("401")) {
+        location.href = "/login.html";
+        return;
+      }
+      $(".chart-card").innerHTML = `<div class="error">无法加载统计数据：${error.message}</div>`;
     });
 })();
 </script>
