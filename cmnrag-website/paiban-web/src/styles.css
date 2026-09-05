@@ -38,6 +38,10 @@ body {
 .left-panel { flex: 1.4; overflow: auto; padding: 12px; border-right: 1px solid #ddd; }
 .right-panel { flex: 0.6; display: flex; flex-direction: column; border-left: 1px solid #ddd; background: #fff; overflow: hidden; }
 .settings-panel { padding: 12px; overflow: auto; flex: 1; }
+.settings-save-bar { margin-top: 16px; padding-top: 12px; border-top: 2px solid #e5e7eb; }
+.settings-save-button { width: 100%; padding: 10px 12px; border: none; border-radius: 6px; background: #155eef; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: 0 2px 5px rgba(21,94,239,.25); }
+.settings-save-button:hover:not(:disabled) { background: #0b4dcc; }
+.settings-save-button:disabled { background: #b8c2d1; color: #f8fafc; cursor: not-allowed; box-shadow: none; }
 
 /* 登录 */
 .login-box {

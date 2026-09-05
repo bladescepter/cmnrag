@@ -11,6 +11,21 @@ interface Cycle {
   publishEnd: string;   // 见报日期止
 }
 
+function localDateString(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/** 按当前值班日期选中周期；超出配置范围时回退到首/末个周期。 */
+function currentCycleIndex(cycles: Cycle[], today = localDateString()): number {
+  const index = cycles.findIndex(cycle => today >= cycle.start && today <= cycle.end);
+  if (index >= 0) return index;
+  if (cycles.length === 0 || today < cycles[0].start) return 0;
+  return cycles.length - 1;
+}
+
 export default function GeneratePanel({
   onGenerated,
   filterRange,
@@ -50,7 +65,9 @@ export default function GeneratePanel({
         );
         setCycles(computed);
         if (computed.length > 0) {
-          onFilterChange({ start: computed[0].start, end: computed[0].end });
+          const defaultIndex = currentCycleIndex(computed);
+          setSelectedCycleIdx(defaultIndex);
+          onFilterChange({ start: computed[defaultIndex].start, end: computed[defaultIndex].end });
         }
       })
       .catch(() => {});

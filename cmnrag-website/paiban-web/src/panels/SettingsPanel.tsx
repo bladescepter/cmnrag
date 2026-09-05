@@ -135,7 +135,6 @@ export default function SettingsPanel() {
       ))}
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
         <button onClick={addMember} style={{ padding: '4px 8px', cursor: 'pointer', border: '1px solid #ccc', background: '#fff', borderRadius: 4 }}>+ 添加</button>
-        {dirty && <button onClick={save} style={{ padding: '4px 12px', cursor: 'pointer', border: 'none', background: '#34c759', color: '#fff', borderRadius: 4 }}>保存</button>}
       </div>
 
       <h3 style={{ fontSize: 14, margin: '12px 0 6px' }}>周五轮换顺序</h3>
@@ -148,6 +147,16 @@ export default function SettingsPanel() {
         }}
       />
       <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>用顿号分隔</div>
+
+      <div className="settings-save-bar">
+        <button
+          onClick={save}
+          disabled={!dirty}
+          className="settings-save-button"
+        >
+          保存设置
+        </button>
+      </div>
     </div>
   );
 }

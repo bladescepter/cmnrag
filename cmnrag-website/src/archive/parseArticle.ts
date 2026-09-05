@@ -75,7 +75,7 @@ export function parseArticle(markdown: string, sourcePath: string): Article {
 	const date = textValue(frontmatter, "date", true);
 	if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`Frontmatter date must use YYYY-MM-DD in ${sourcePath}`);
 	const page = textValue(frontmatter, "page", true);
-	if (!new Set(["一版", "二版", "三版", "四版"]).has(page)) throw new Error(`Frontmatter page is invalid in ${sourcePath}`);
+	if (!/^(一版|二版|三版|四版|第\d{2}版)$/.test(page)) throw new Error(`Frontmatter page is invalid in ${sourcePath}`);
 	const editionType = textValue(frontmatter, "edition_type", true);
 	if (!new Set(["常规版", "策划版"]).has(editionType)) throw new Error(`Frontmatter edition_type is invalid in ${sourcePath}`);
 
