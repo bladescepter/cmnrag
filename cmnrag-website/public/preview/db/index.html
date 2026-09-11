@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>中国气象报资料检索</title>
+  
+
+  <link rel="stylesheet" href="/site.css" />
+</head>
+<body class="archive-page">
+<div id="auth-bar"><div class="auth-bar-inner"><div class="auth-left"><a class="auth-home" href="/preview.html" aria-label="预览首页"><span class="home-mark" aria-hidden="true">↖</span><span>主页</span></a></div><nav class="auth-nav" aria-label="主导航"><div class="nav-menu"><a class="auth-link nav-trigger" href="/preview/db/" aria-haspopup="true"><span>报纸资料库</span><span class="nav-caret" aria-hidden="true">⌄</span></a><div class="nav-dropdown" role="menu"><a class="nav-dropdown-item" href="/preview/stats/" role="menuitem"><span><strong>各省发稿看板</strong><small>按地区查看发稿量</small></span><span class="nav-arrow" aria-hidden="true">↗</span></a><a class="nav-dropdown-item" href="/preview/column-dashboard/" role="menuitem"><span><strong>栏目运行看板</strong><small>栏目状态与趋势</small></span><em>预览</em></a></div></div><a class="auth-link" href="/preview/schedule/">排班系统</a></nav><div class="auth-right"><span class="auth-name">界面预览</span></div></div></div>
+<header><div class="db-header-inner"><div><h1>中国气象报资料检索</h1><p>支持按关键词搜索，按日期、版面、版头、栏目、地区、作者精确筛选，基于筛选内容与AI对话。<br>当前覆盖6月1日至今内容，最新一期报纸中午前后更新（需在电子报更新后），计划逐步补完2026年内容。</p></div><div class="stats-links" aria-label="资料库看板"><a class="stats-link" href="/preview/stats/">各省发稿看板 ↗</a><a class="stats-link" href="/preview/column-dashboard/">栏目运行看板 ↗</a></div></div></header>
+<main>
+  <section class="panel">
+    <form id="search-form">
+      <div class="search"><div><label for="q">关键词</label><input id="q" name="q" placeholder="搜索标题或正文" /></div><div style="align-self:end"><button type="submit">检索</button></div></div>
+      <div class="filters">
+        <div><label for="date-from">起始日期</label><input id="date-from" type="date" name="date_from" /></div><div><label for="date-to">结束日期</label><input id="date-to" type="date" name="date_to" /></div>
+        <div><label for="page">版面</label><select id="page" name="page"><option value="">全部版面</option><option>一版</option><option>二版</option><option>三版</option><option>四版</option></select></div>
+        <div class="facet-field"><label for="theme">版头</label><input id="theme" name="theme" autocomplete="off" placeholder="输入版头名称的一部分，或从候选中选择" /><div id="theme-options" class="facet-menu"></div></div>
+        <div class="span2 facet-field"><label for="column">栏目</label><input id="column" name="column" autocomplete="off" placeholder="输入栏目名称的一部分，或从候选中选择" /><div id="column-options" class="facet-menu"></div></div>
+        <div><label for="region">主体地区</label><input id="region" name="region" placeholder="如：河北、唐山、沙河" /></div><div><label for="author">作者</label><input id="author" name="author" placeholder="姓名" /></div>
+      </div>
+      <div class="actions"><button type="submit">应用筛选</button><button type="button" class="secondary" id="reset">清除条件</button></div>
+      <p class="notice" id="notice"></p>
+    </form>
+  </section>
+  <div class="summary"><p class="hint" id="summary">输入条件后检索资料。</p><p class="hint">全文阅读不消耗 AI 额度</p></div>
+  <section id="results"></section>
+  <div class="empty" id="more-results" hidden><button type="button" id="load-more">加载更多</button></div>
+</main>
+<button class="ai-fab" id="open-ai" type="button">问 AI</button>
+<aside class="ai-drawer" id="ai-drawer" aria-label="AI 综合问答">
+  <div class="chat-head"><h2>AI 综合问答</h2><div><button type="button" class="secondary chat-new" id="new-chat">新建对话</button><button class="close" aria-label="关闭" id="close-ai">×</button></div></div>
+  <div class="chat-scope" id="chat-scope">当前范围：全部稿件</div>
+  <section class="chat-log" id="chat-log"><p class="chat-empty">输入问题开始问答。每一轮都会在当前筛选范围内重新检索原稿。</p></section>
+  <p class="notice" id="ai-notice"></p>
+  <div class="chat-input"><input id="ai-question" placeholder="例如：这些报道反映了哪些做法？" /><button type="button" id="ask-ai">发送</button></div>
+</aside>
+<dialog id="article-dialog"><div class="dialog-head"><h2 id="article-title"></h2><button class="close" aria-label="关闭" id="close-dialog">×</button></div><div class="article-meta" id="article-meta"></div><article class="content" id="article-content"></article></dialog>
+<script>
+const form=document.querySelector('#search-form'), results=document.querySelector('#results'), summary=document.querySelector('#summary'), notice=document.querySelector('#notice'), dialog=document.querySelector('#article-dialog'), moreResults=document.querySelector('#more-results'), loadMore=document.querySelector('#load-more'), columnInput=document.querySelector('#column'), columnOptions=document.querySelector('#column-options'), themeInput=document.querySelector('#theme'), themeOptions=document.querySelector('#theme-options'), aiQuestion=document.querySelector('#ai-question'), askAi=document.querySelector('#ask-ai'), aiNotice=document.querySelector('#ai-notice'), chatLog=document.querySelector('#chat-log'), drawer=document.querySelector('#ai-drawer'), chatScope=document.querySelector('#chat-scope'), openAi=document.querySelector('#open-ai'), closeAi=document.querySelector('#close-ai'), newChat=document.querySelector('#new-chat');
+let searchOffset=0;let searchTotal=0;
+const text=(v,label)=>Array.isArray(v)?(v.join('、')||`无${label}`):(v||`无${label}`);
+function params(){const data=new FormData(form), p=new URLSearchParams();for(const [k,v] of data){if(v.trim())p.append(k,v.trim())}return p}
+function esc(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function renderItems(items){return items.map(x=>`<div class="result" data-id="${esc(x.article_id)}"><div><div class="title">${esc(x.title)}</div><div class="meta"><span>${esc(x.published_date)}</span><span class="pill page-pill">${esc(x.page)}</span><span class="pill author-pill">${esc(text(x.author,'作者'))}</span><span class="pill column-pill">${esc(text(x.column_name,'栏目'))}</span><span class="pill region-pill">${esc(text(x.region,'地区'))}</span></div></div><div class="hint">阅读全文 ›</div></div>`).join('')}
+async function search(append=false){notice.style.display='none';if(!append){searchOffset=0;results.innerHTML='<div class="empty">正在检索…</div>';moreResults.hidden=true}try{const p=params();p.set('limit','50');p.set('offset',String(searchOffset));const r=await fetch('/api/articles?'+p);const d=await r.json();if(!r.ok)throw new Error(d.error||'请求失败');searchTotal=d.total;searchOffset+=d.items.length;summary.textContent=`共找到 ${d.total} 篇稿件 · 已显示 ${searchOffset} 篇`;if(!append)results.innerHTML=d.items.length?renderItems(d.items):'<div class="empty">没有符合条件的稿件。</div>';else results.insertAdjacentHTML('beforeend',renderItems(d.items));moreResults.hidden=!d.has_more;if(d.has_more)loadMore.textContent=`加载更多（还有 ${d.total-searchOffset} 篇）`}catch(e){if(!append)results.innerHTML='';notice.textContent='检索失败：'+e.message;notice.style.display='block'}}
+async function article(id){const r=await fetch('/api/articles/'+encodeURIComponent(id)), a=await r.json();if(!r.ok)return;document.querySelector('#article-title').textContent=a.title;document.querySelector('#article-meta').innerHTML=`日期：${esc(a.published_date)}　版面：${esc(a.page)}　作者：${esc(text(a.author,'作者'))}<br>版头：${esc(a.theme)}　栏目：${esc(text(a.column_name,'栏目'))}　地区：${esc(text(a.region,'地区'))}`;document.querySelector('#article-content').textContent=a.content||'原文内容未收录；该稿仅保留结构化档案信息。';dialog.showModal()}
+async function loadFacetOptions(input,options,endpoint){try{const q=input.value.trim();const r=await fetch(`${endpoint}?q=${encodeURIComponent(q)}`),d=await r.json();if(!r.ok)return;options.innerHTML=d.items.map(x=>`<button type="button" class="facet-option" data-value="${esc(x.value)}"><span class="facet-option-name">${esc(x.value)}</span></button>`).join('');options.classList.toggle('open',d.items.length>0)}catch{}}
+function chooseFacet(event,input,options){const option=event.target.closest('.facet-option');if(!option)return;input.value=option.dataset.value;options.classList.remove('open');}
+let conversation=[];let scopeKey='';
+function currentFilters(){return Object.fromEntries(new FormData(form).entries())}
+function scopeText(filters){const entries=Object.entries(filters).filter(([,v])=>String(v).trim());return entries.length?`当前范围：${entries.map(([k,v])=>({date_from:'起始日期',date_to:'结束日期',page:'版面',theme:'版头',column:'栏目',region:'地区',author:'作者',q:'关键词'}[k]||k)+`“${v}”`).join(' · ')}`:'当前范围：全部稿件'}
+function appendMessage(role,content){const node=document.createElement('article');node.className=`chat-message ${role}`;node.textContent=content;chatLog.append(node);chatLog.scrollTop=chatLog.scrollHeight;return node}
+function resetConversation(message='输入问题开始问答。每一轮都会在当前筛选范围内重新检索原稿。'){conversation=[];chatLog.innerHTML=`<p class="chat-empty">${esc(message)}</p>`}
+function ensureScope(){const filters=currentFilters(),key=JSON.stringify(filters);chatScope.textContent=scopeText(filters);if(scopeKey&&scopeKey!==key)resetConversation('检索范围已变更，已开启新对话。');scopeKey=key;return filters}
+async function askQuestion(){const question=aiQuestion.value.trim();if(!question)return;const filters=ensureScope();aiNotice.style.display='none';chatLog.querySelector('.chat-empty')?.remove();appendMessage('user',question);aiQuestion.value='';const waiting=appendMessage('assistant','正在检索原稿并生成回答…');askAi.disabled=true;try{const r=await fetch('/api/answer',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question,filters,history:conversation})});const d=await r.json();if(!r.ok){if(d.error==='ai_daily_limit')throw new Error('今日 AI 问答额度已用完');throw new Error(d.error||'AI 问答暂时不可用')}waiting.textContent=d.answer;conversation.push({role:'user',content:question},{role:'assistant',content:d.answer});if(d.sources?.length){const box=document.createElement('section');box.className='chat-sources';box.innerHTML=`<div class="hint">来源</div>${d.sources.map(s=>`<button type="button" class="facet-option ai-source" data-id="${esc(s.article_id)}">[${s.number}] ${esc(s.title)}　${esc(s.date)} ${esc(s.page)}</button>`).join('')}`;chatLog.append(box)}chatLog.scrollTop=chatLog.scrollHeight}catch(e){waiting.remove();aiNotice.textContent=e.message;aiNotice.style.display='block'}finally{askAi.disabled=false}}
+form.addEventListener('submit',e=>{e.preventDefault();search()});loadMore.addEventListener('click',()=>search(true));openAi.addEventListener('click',()=>{ensureScope();drawer.classList.add('open');aiQuestion.focus()});closeAi.addEventListener('click',()=>drawer.classList.remove('open'));newChat.addEventListener('click',()=>resetConversation('已开启新对话。'));askAi.addEventListener('click',askQuestion);aiQuestion.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();askQuestion()}});chatLog.addEventListener('click',e=>{const source=e.target.closest('.ai-source');if(source)article(source.dataset.id)});columnInput.addEventListener('focus',()=>loadFacetOptions(columnInput,columnOptions,'/api/columns'));columnInput.addEventListener('input',()=>loadFacetOptions(columnInput,columnOptions,'/api/columns'));columnOptions.addEventListener('click',e=>chooseFacet(e,columnInput,columnOptions));themeInput.addEventListener('focus',()=>loadFacetOptions(themeInput,themeOptions,'/api/themes'));themeInput.addEventListener('input',()=>loadFacetOptions(themeInput,themeOptions,'/api/themes'));themeOptions.addEventListener('click',e=>chooseFacet(e,themeInput,themeOptions));document.addEventListener('click',e=>{if(!e.target.closest('.facet-field'))document.querySelectorAll('.facet-menu').forEach(menu=>menu.classList.remove('open'))});function resetAll(){HTMLFormElement.prototype.reset.call(form);['column','theme','region','author','q','date_from','date_to','page'].forEach(n=>{const e=document.querySelector(`[name="${n}"]`);if(e)e.value=''});columnOptions.innerHTML='';themeOptions.innerHTML='';columnOptions.classList.remove('open');themeOptions.classList.remove('open');results.innerHTML='';summary.textContent='输入条件后检索资料。';moreResults.hidden=true;searchOffset=0;searchTotal=0;scopeKey=''};document.querySelector('#reset').addEventListener('click',resetAll);results.addEventListener('click',e=>{const row=e.target.closest('.result');if(row)article(row.dataset.id)});document.querySelector('#close-dialog').addEventListener('click',()=>dialog.close());
+</script>
+
+</body></html>

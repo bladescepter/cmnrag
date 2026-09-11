@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>各省发稿看板 · 条形图</title>
+
+
+<link rel="stylesheet" href="/site.css" />
+</head>
+<body class="stats-page">
+<div id="auth-bar"><div class="auth-bar-inner"><div class="auth-left"><a class="auth-home" href="/preview.html" aria-label="预览首页"><span class="home-mark" aria-hidden="true">↖</span><span>主页</span></a></div><nav class="auth-nav" aria-label="主导航"><div class="nav-menu"><a class="auth-link nav-trigger" href="/preview/db/" aria-haspopup="true"><span>报纸资料库</span><span class="nav-caret" aria-hidden="true">⌄</span></a><div class="nav-dropdown" role="menu"><a class="nav-dropdown-item" href="/preview/stats/" role="menuitem"><span><strong>各省发稿看板</strong><small>按地区查看发稿量</small></span><span class="nav-arrow" aria-hidden="true">↗</span></a><a class="nav-dropdown-item" href="/preview/column-dashboard/" role="menuitem"><span><strong>栏目运行看板</strong><small>栏目状态与趋势</small></span><em>预览</em></a></div></div><a class="auth-link" href="/preview/schedule/">排班系统</a></nav><div class="auth-right"><span class="auth-name">界面预览</span></div></div></div>
+<main class="page">
+  <header class="masthead">
+    <div>
+      <div class="eyebrow">中国气象报 · DATA PROTOTYPE</div>
+      <h1>各省发稿看板</h1>
+      <p class="subtitle">按省级区排序的发稿量 · 横向条形图 · 直接比较</p>
+    </div>
+    <div class="badge">线上实时数据</div>
+  </header>
+
+  <section class="toolbar" aria-label="日期筛选">
+    <label>开始日期 <input id="from" type="date"></label>
+    <label>结束日期 <input id="to" type="date"></label>
+    <button id="apply">应用筛选</button>
+    <div class="quick">
+      <button data-range="30">近30天</button>
+      <button data-range="90">近90天</button>
+      <button data-range="180">近180天</button>
+      <button data-range="365">近1年</button>
+    </div>
+  </section>
+
+  <section class="stats" aria-label="统计摘要">
+    <div class="stat"><div class="stat-label">周期内稿件</div><div class="stat-value" id="total">—</div></div>
+    <div class="stat"><div class="stat-label">有发稿省级区</div><div class="stat-value" id="covered">—</div></div>
+    <div class="stat"><div class="stat-label">发稿最多</div><div class="stat-value" id="leader">—</div></div>
+    <div class="stat"><div class="stat-label">全国/未标注</div><div class="stat-value" id="unassigned">—</div></div>
+  </section>
+
+  <section class="chart-card">
+    <div class="chart-head"><strong id="range-label">加载中…</strong><span id="source-label">档案 Markdown 真源</span></div>
+    <div class="chart-body">
+      <div class="axis" aria-hidden="true"><span></span><span></span><div class="axis-scale"><span>0</span><span id="axis-max">—</span></div><span>篇</span></div>
+      <div id="bar-chart" class="bar-chart" aria-label="各省发稿看板条形图"></div>
+    </div>
+    <div id="detail" class="detail"><strong id="detail-name">—</strong><span class="detail-count" id="detail-count">—</span><span id="detail-copy">点击链接进入对应地区筛选</span><a id="detail-link" href="#" target="_blank" rel="noreferrer">打开资料库筛选 ↗</a></div>
+  </section>
+  <p class="note">统计口径：总篇数按稿件计一次；一篇稿件若地区跨多个省级区，则在对应省级区各计一次；地区为空的稿件归入“全国/未标注”。香港、澳门不列入本图。数据来自线上档案实时统计。</p>
+</main>
+<script>
+(() => {
+  const PROVINCES = [
+    ["北京", "北京市"], ["天津", "天津市"], ["河北", "河北省"], ["山西", "山西省"],
+    ["内蒙古", "内蒙古自治区"], ["辽宁", "辽宁省"], ["吉林", "吉林省"], ["黑龙江", "黑龙江省"],
+    ["上海", "上海市"], ["江苏", "江苏省"], ["浙江", "浙江省"], ["安徽", "安徽省"],
+    ["福建", "福建省"], ["江西", "江西省"], ["山东", "山东省"], ["河南", "河南省"],
+    ["湖北", "湖北省"], ["湖南", "湖南省"], ["广东", "广东省"], ["广西", "广西壮族自治区"],
+    ["海南", "海南省"], ["重庆", "重庆市"], ["四川", "四川省"], ["贵州", "贵州省"],
+    ["云南", "云南省"], ["西藏", "西藏自治区"], ["陕西", "陕西省"], ["甘肃", "甘肃省"],
+    ["青海", "青海省"], ["宁夏", "宁夏回族自治区"], ["新疆", "新疆维吾尔自治区"],
+    ["台湾", "台湾省"]
+  ];
+  const PROVINCE_KEYS = new Set(PROVINCES.map(([key]) => key));
+  const $ = id => document.getElementById(id);
+  const from = $("from"), to = $("to"), chart = $("bar-chart");
+  let data;
+  let current = { counts: {}, total: 0, unassigned: 0, from: "", to: "", max: 0, leader: ["—", 0] };
+
+  function fmtDate(s) { return s ? s.replace(/-/g, ".") : "—"; }
+  function aggregate(start, end) {
+    const selected = data.dates.filter(d => d.date >= start && d.date <= end);
+    const counts = {};
+    let total = 0, unassigned = 0;
+    for (const day of selected) {
+      total += day.total || 0;
+      unassigned += day.unassigned || 0;
+      for (const [province, n] of Object.entries(day.counts || {})) {
+        if (province === "香港" || province === "澳门") continue;
+        counts[province] = (counts[province] || 0) + n;
+      }
+    }
+    const sorted = PROVINCES
+      .map(([key]) => [key, counts[key] || 0])
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-CN"));
+    return {
+      counts,
+      total,
+      unassigned,
+      from: start,
+      to: end,
+      max: sorted[0]?.[1] || 0,
+      leader: sorted[0] || ["—", 0]
+    };
+  }
+  function setStat(id, value, unit) {
+    $(id).innerHTML = `${value}<small> ${unit}</small>`;
+  }
+  function apply() {
+    if (!data) return;
+    let start = from.value || data.dates[0].date;
+    let end = to.value || data.dates[data.dates.length - 1].date;
+    if (start > end) [start, end] = [end, start];
+    from.value = start;
+    to.value = end;
+    current = aggregate(start, end);
+    const covered = PROVINCES.filter(([key]) => (current.counts[key] || 0) > 0).length;
+    setStat("total", current.total, "篇");
+    setStat("covered", covered, "个省级区");
+    setStat("leader", current.leader[0], `${current.leader[1]} 篇`);
+    setStat("unassigned", current.unassigned, "篇");
+    $("range-label").textContent = `${fmtDate(start)} — ${fmtDate(end)}`;
+    $("axis-max").textContent = `${current.max}`;
+    renderBars();
+    hideDetail();
+  }
+  function renderBars() {
+    const rows = PROVINCES
+      .map(([key, full]) => ({ key, full, value: current.counts[key] || 0 }))
+      .sort((a, b) => b.value - a.value || a.key.localeCompare(b.key, "zh-CN"));
+    chart.innerHTML = "";
+    rows.forEach((row, index) => {
+      const item = document.createElement("div");
+      item.className = `bar-row${row.value === 0 ? " zero" : ""}`;
+      item.tabIndex = 0;
+      item.dataset.key = row.key;
+      item.style.setProperty("--width", current.max ? `${(row.value / current.max * 100).toFixed(2)}%` : "0%");
+      item.setAttribute("aria-label", `${row.key} ${row.value} 篇`);
+      item.innerHTML = `<span class="rank">${index + 1}</span><span class="bar-label">${row.key}</span><span class="bar-track"><span class="bar-fill"></span></span><span class="bar-value">${row.value}</span>`;
+      item.addEventListener("click", () => showDetail(item));
+      item.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          showDetail(item);
+        }
+      });
+      chart.appendChild(item);
+    });
+  }
+  function hideDetail() {
+    $("detail").classList.remove("show");
+    chart.querySelectorAll(".selected").forEach(row => row.classList.remove("selected"));
+  }
+  function showDetail(item) {
+    const key = item.dataset.key;
+    const n = current.counts[key] || 0;
+    chart.querySelectorAll(".selected").forEach(row => row.classList.remove("selected"));
+    item.classList.add("selected");
+    $("detail-name").textContent = key;
+    $("detail-count").textContent = `${n} 篇`;
+    $("detail-copy").textContent = `${fmtDate(current.from)}—${fmtDate(current.to)} · 点击链接进入地区筛选`;
+    const full = PROVINCES.find(p => p[0] === key)?.[1] || key;
+    $("detail-link").href = `https://cfzx.xiyuan.wiki/db?region=${encodeURIComponent(full)}`;
+    $("detail").classList.add("show");
+  }
+  function quick(days) {
+    const end = data.dates[data.dates.length - 1].date;
+    const endDate = new Date(`${end}T00:00:00`);
+    endDate.setDate(endDate.getDate() - Number(days) + 1);
+    const candidate = endDate.toISOString().slice(0, 10);
+    from.value = data.dates.find(d => d.date >= candidate)?.date || data.dates[0].date;
+    to.value = end;
+    apply();
+  }
+  $("apply").addEventListener("click", apply);
+  document.querySelectorAll("[data-range]").forEach(button => button.addEventListener("click", () => quick(button.dataset.range)));
+  fetch("/api/stats", { cache: "no-store" })
+    .then(response => {
+      if (!response.ok) throw new Error(`/api/stats ${response.status}`);
+      return response.json();
+    })
+    .then(json => {
+      data = json;
+      const first = data.dates[0].date;
+      const last = data.dates[data.dates.length - 1].date;
+      from.min = first; from.max = last;
+      to.min = first; to.max = last;
+      $("source-label").textContent = `线上档案 · ${data.articleFiles} 篇`;
+      quick(30);
+    })
+    .catch(error => {
+      $(".chart-card").innerHTML = `<div class="error">预览页未加载线上统计数据：${error.message}</div>`;
+    });
+})();
+</script>
+
+</body>
+</html>

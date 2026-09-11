@@ -39,7 +39,6 @@ export default function SettingsPanel() {
     setDirty(true);
   };
 
-  // ── 休假管理 ──
   const addExclusion = () => {
     setExclusions([...exclusions, { name: '', dates: [] }]);
     setDirty(true);
@@ -79,83 +78,85 @@ export default function SettingsPanel() {
 
   return (
     <div className="settings-panel">
-      <h3 style={{ fontSize: 14, marginBottom: 6 }}>休假管理</h3>
-      <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>指定人员在特定日期不排班</div>
-      {exclusions.map((e, i) => (
-        <div key={i} style={{ border: '1px solid #ddd', borderRadius: 4, padding: 6, marginBottom: 6 }}>
-          <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
-            <select
-              style={{ flex: 1, padding: '2px', border: '1px solid #ccc', borderRadius: 4 }}
-              value={e.name}
-              onChange={ev => changeExclusionName(i, ev.target.value)}
-            >
-              <option value="">选择人员</option>
-              {activeNames.map(n => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-            <button onClick={() => removeExclusion(i)} style={{ padding: '0 6px', cursor: 'pointer', border: 'none', background: '#ff3b30', color: '#fff', borderRadius: 4 }}>✕</button>
-          </div>
-          {e.dates.map((d, j) => (
-            <div key={j} style={{ display: 'flex', gap: 4, marginBottom: 2 }}>
-              <input
-                type="date"
-                style={{ flex: 1, padding: '2px 4px', border: '1px solid #ccc', borderRadius: 4, fontSize: 12 }}
-                value={d}
-                onChange={ev => changeExclusionDate(i, j, ev.target.value)}
-              />
-              <button onClick={() => removeExclusionDate(i, j)} style={{ padding: '0 6px', cursor: 'pointer', border: 'none', background: '#ddd', color: '#333', borderRadius: 4, fontSize: 11 }}>✕</button>
-            </div>
-          ))}
-          <button onClick={() => addExclusionDate(i)} style={{ padding: '2px 6px', cursor: 'pointer', border: '1px solid #ccc', background: '#fff', borderRadius: 4, fontSize: 11, marginTop: 2 }}>+ 添加日期</button>
+      <div className="settings-heading">
+        <div>
+          <h2>排班设置</h2>
+          <p>人员、轮换和休假规则</p>
         </div>
-      ))}
-      <button onClick={addExclusion} style={{ padding: '4px 8px', cursor: 'pointer', border: '1px solid #ccc', background: '#fff', borderRadius: 4, fontSize: 12 }}>+ 添加休假</button>
-
-      <h3 style={{ fontSize: 14, margin: '12px 0 6px' }}>人员设置</h3>
-      {members.map((m, i) => (
-        <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
-          <input
-            style={{ flex: 1, padding: '2px 4px', border: '1px solid #ccc', borderRadius: 4 }}
-            value={m.name}
-            onChange={e => changeMember(i, 'name', e.target.value)}
-            placeholder="姓名"
-          />
-          <select
-            style={{ flex: 1, padding: '2px', border: '1px solid #ccc', borderRadius: 4 }}
-            value={m.role}
-            onChange={e => changeMember(i, 'role', e.target.value)}
-          >
-            {Object.entries(ROLE_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
-          <button onClick={() => removeMember(i)} style={{ padding: '0 6px', cursor: 'pointer', border: 'none', background: '#ff3b30', color: '#fff', borderRadius: 4 }}>✕</button>
-        </div>
-      ))}
-      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-        <button onClick={addMember} style={{ padding: '4px 8px', cursor: 'pointer', border: '1px solid #ccc', background: '#fff', borderRadius: 4 }}>+ 添加</button>
+        {dirty && <span className="dirty-mark">未保存</span>}
       </div>
 
-      <h3 style={{ fontSize: 14, margin: '12px 0 6px' }}>周五轮换顺序</h3>
-      <input
-        style={{ width: '100%', padding: '4px', border: '1px solid #ccc', borderRadius: 4 }}
-        value={rotation.join('、')}
-        onChange={e => {
-          setRotation(e.target.value.split(/[、,，\s]+/).filter(Boolean));
-          setDirty(true);
-        }}
-      />
-      <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>用顿号分隔</div>
+      <section className="settings-section">
+        <h3>休假管理</h3>
+        <p className="settings-help">指定人员在特定日期不排班。</p>
+        {exclusions.map((e, i) => (
+          <div key={i} className="exclusion-item">
+            <div className="form-row">
+              <select
+                className="settings-control"
+                value={e.name}
+                onChange={ev => changeExclusionName(i, ev.target.value)}
+              >
+                <option value="">选择人员</option>
+                {activeNames.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <button type="button" className="icon-button danger" onClick={() => removeExclusion(i)} aria-label="删除休假">×</button>
+            </div>
+            {e.dates.map((d, j) => (
+              <div key={j} className="form-row">
+                <input
+                  className="settings-control"
+                  type="date"
+                  value={d}
+                  onChange={ev => changeExclusionDate(i, j, ev.target.value)}
+                />
+                <button type="button" className="icon-button" onClick={() => removeExclusionDate(i, j)} aria-label="删除日期">×</button>
+              </div>
+            ))}
+            <button type="button" className="add-button" onClick={() => addExclusionDate(i)}>＋ 添加日期</button>
+          </div>
+        ))}
+        <button type="button" className="add-button" onClick={addExclusion}>＋ 添加休假</button>
+      </section>
+
+      <section className="settings-section">
+        <h3>人员设置</h3>
+        {members.map((m, i) => (
+          <div key={i} className="form-row">
+            <input
+              className="settings-control"
+              value={m.name}
+              onChange={e => changeMember(i, 'name', e.target.value)}
+              placeholder="姓名"
+            />
+            <select
+              className="settings-control"
+              value={m.role}
+              onChange={e => changeMember(i, 'role', e.target.value)}
+            >
+              {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <button type="button" className="icon-button danger" onClick={() => removeMember(i)} aria-label="删除人员">×</button>
+          </div>
+        ))}
+        <button type="button" className="add-button" onClick={addMember}>＋ 添加人员</button>
+      </section>
+
+      <section className="settings-section">
+        <h3>周五轮换顺序</h3>
+        <input
+          className="settings-control rotation-input"
+          value={rotation.join('、')}
+          onChange={e => {
+            setRotation(e.target.value.split(/[、,，\s]+/).filter(Boolean));
+            setDirty(true);
+          }}
+        />
+        <p className="settings-help">用顿号分隔人员姓名。</p>
+      </section>
 
       <div className="settings-save-bar">
-        <button
-          onClick={save}
-          disabled={!dirty}
-          className="settings-save-button"
-        >
-          保存设置
-        </button>
+        <button onClick={save} disabled={!dirty} className="settings-save-button">保存设置</button>
       </div>
     </div>
   );

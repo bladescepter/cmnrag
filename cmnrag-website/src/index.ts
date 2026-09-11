@@ -3,6 +3,7 @@ import { buildArticleQuery } from "./archive/search";
 import { parseSearchRequest } from "./archive/request";
 import { parsePagination } from "./archive/pagination";
 import { aggregateDays, type ProvinceStatRow } from "./archive/stats";
+import { buildColumnStats, type ColumnStatsRow } from "./archive/columnStats";
 import { buildAnswerArticleIdQuery, buildVectorArticleFilter } from "./ai/answerFilters";
 import { buildRagSystemPrompt, buildRagUserPrompt, uniqueSourcesByArticle, type ConversationTurn, type RagSource } from "./ai/rag";
 import {
@@ -108,6 +109,11 @@ async function listProvinceStats(env: Env) {
 	return json(aggregateDays(result.results));
 }
 
+async function listColumnStats(env: Env) {
+	const result = await env.DB.prepare("SELECT published_date, column_name FROM articles ORDER BY published_date ASC, article_id ASC").all<ColumnStatsRow>();
+	return json(buildColumnStats(result.results));
+}
+
 type EmbeddingResponse = { data: number[][] };
 type AnswerRequest = { question?: unknown; filters?: unknown; history?: unknown };
 type SourceRow = RagSource & { chunk_id: string; article_id: string; source_path: string; author: string; region: string; vector_id: string };
@@ -195,30 +201,34 @@ export default {
 			// 公开认证接口：注册 / 登录
 			if (url.pathname === "/api/auth/register" && request.method === "POST") return handleRegister(request, env);
 			if (url.pathname === "/api/auth/login" && request.method === "POST") return handleLogin(request, env);
-			// 其余 /api/* 需登录；/api/admin/* 需 admin 角色
-			const user = await requireUser(request, env);
+			// 认证状态与管理员接口仍需会话；资料库接口公开，只有排班接口保留登录门禁。
 			if (url.pathname === "/api/auth/logout" && request.method === "POST") return handleLogout(request, env);
-			if (url.pathname === "/api/auth/me") return handleMe(user);
+			if (url.pathname === "/api/auth/me") return handleMe(await requireUser(request, env));
 			if (url.pathname === "/api/admin/users" && request.method === "GET") {
+				const user = await requireUser(request, env);
 				if (!user || user.role !== "admin") return error("forbidden", 403);
 				return handleAdminUsers(url, env);
 			}
 			const adminMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/(approve|reject)$/);
 			if (adminMatch && request.method === "POST") {
+				const user = await requireUser(request, env);
 				if (!user || user.role !== "admin") return error("forbidden", 403);
 				return handleAdminAction(request, env, adminMatch[1], adminMatch[2] as "approve" | "reject");
 			}
-			if (!user) return error("unauthorized", 401);
-			// 排班子应用：/api/pb/* 交给 paiban（已通过主登录鉴权）
+			// 排班子应用：/api/pb/* 交给 paiban，并保留主系统登录鉴权。
 			if (url.pathname.startsWith("/api/pb/")) {
+				const user = await requireUser(request, env);
+				if (!user) return error("unauthorized", 401);
 				return paibanApp.fetch(request, env as never);
 			}
+			// 资料库、统计与 AI 问答接口公开访问；页面本身也不再强制跳转登录。
 			if (url.pathname === "/api/columns") return listFacet(url, env, "column_name");
 			if (url.pathname === "/api/themes") return listFacet(url, env, "theme");
 			if (url.pathname === "/api/answer" && request.method === "POST") return answerQuestion(request, env);
 			if (url.pathname === "/api/articles") return listArticles(url, env);
 			if (url.pathname.startsWith("/api/articles/")) return getArticle(decodeURIComponent(url.pathname.slice("/api/articles/".length)), env);
 			if (url.pathname === "/api/stats") return listProvinceStats(env);
+			if (url.pathname === "/api/column-stats") return listColumnStats(env);
 			return error("not_found", 404);
 		} catch (caught) {
 			console.error(caught);

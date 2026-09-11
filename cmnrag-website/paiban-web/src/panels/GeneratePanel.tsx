@@ -194,7 +194,6 @@ export default function GeneratePanel({
       <button
         onClick={handleClear}
         className="btn-clear"
-        style={{ width: '100%' }}
         title="清空当前筛选范围内未锁定的排班"
       >
         清屏

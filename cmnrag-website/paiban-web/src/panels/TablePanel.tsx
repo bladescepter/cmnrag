@@ -262,10 +262,10 @@ export default function TablePanel({
 
   return (
     <div>
-      <h3 style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-        排班表 {RANGE_LABEL}
-        {flash && <span style={{ fontSize: 12, color: '#34c759', fontWeight: 400 }}>✓ 已更新</span>}
-      </h3>
+      <div className="table-heading">
+        <h3>排班表 <span className="table-period">{RANGE_LABEL}</span></h3>
+        {flash && <span className="table-flash">✓ 已更新</span>}
+      </div>
       <p className="lock-hint">悬停编辑格浮现小锁，点击锁定；锁定格生成排班时保留原编辑</p>
 
 

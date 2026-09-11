@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>更新日志 · 采访中心工具集</title>
+  <link rel="stylesheet" href="/site.css" />
+</head>
+<body class="changelog-page">
+<div id="auth-bar"><div class="auth-bar-inner"><div class="auth-left"><a class="auth-home" href="/preview.html" aria-label="预览首页"><span class="home-mark" aria-hidden="true">↖</span><span>主页</span></a></div><nav class="auth-nav" aria-label="主导航"><div class="nav-menu"><a class="auth-link nav-trigger" href="/preview/db/" aria-haspopup="true"><span>报纸资料库</span><span class="nav-caret" aria-hidden="true">⌄</span></a><div class="nav-dropdown" role="menu"><a class="nav-dropdown-item" href="/preview/stats/" role="menuitem"><span><strong>各省发稿看板</strong><small>按地区查看发稿量</small></span><span class="nav-arrow" aria-hidden="true">↗</span></a><a class="nav-dropdown-item" href="/preview/column-dashboard/" role="menuitem"><span><strong>栏目运行看板</strong><small>栏目状态与趋势</small></span><em>预览</em></a></div></div><a class="auth-link" href="/preview/schedule/">排班系统</a></nav><div class="auth-right"><span class="auth-name">界面预览</span></div></div></div>
+<header><h1>更新日志</h1><p>采访中心工具集的功能与资料更新记录。</p></header>
+<main>
+  <a class="back" href="/">← 返回首页</a>
+  <section class="log-list" id="log-list"><div class="empty">正在加载更新日志…</div></section>
+</main>
+<footer class="site-footer"><strong>采访中心工具集</strong><span>内部工具 · 中国气象报采访中心</span></footer>
+<script>
+const list = document.querySelector('#log-list');
+function render(entries) {
+  list.innerHTML = '';
+  if (!entries.length) {
+    list.innerHTML = '<div class="empty">暂无更新记录。</div>';
+    return;
+  }
+  for (const item of entries) {
+    const article = document.createElement('article');
+    article.className = 'log-entry';
+    const head = document.createElement('div');
+    head.className = 'log-head';
+    const date = document.createElement('time');
+    date.className = 'log-date';
+    date.dateTime = item.date || '';
+    date.textContent = item.dateLabel || item.date || '';
+    const title = document.createElement('h2');
+    title.className = 'log-title';
+    title.textContent = item.title || '';
+    const summary = document.createElement('p');
+    summary.className = 'log-summary';
+    summary.textContent = item.summary || '';
+    head.append(date, title);
+    article.append(head, summary);
+    list.append(article);
+  }
+}
+fetch('/changelog.json', { cache: 'no-store' })
+  .then((response) => { if (!response.ok) throw new Error('request failed'); return response.json(); })
+  .then((data) => render(Array.isArray(data.entries) ? data.entries : []))
+  .catch(() => { list.innerHTML = '<div class="empty">更新日志暂时无法加载。</div>'; });
+</script>
+
+</body>
+</html>

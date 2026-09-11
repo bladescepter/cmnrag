@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>栏目运行看板 · 中国气象报资料库</title>
+<link rel="stylesheet" href="/site.css" />
+<style>
+:root {
+  --ink: var(--color-ink);
+  --muted: var(--color-muted);
+  --line: var(--color-rule);
+  --line-soft: var(--color-paper-3);
+  --blue: var(--color-accent);
+  --blue-soft: var(--color-accent-soft);
+  --teal: var(--color-accent);
+  --orange: var(--color-accent-2);
+  --red: var(--color-danger);
+  --bg: var(--color-paper);
+  --card: var(--color-paper-2);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--bg);
+  font-family: var(--font-body);
+}
+.page { max-width: 1320px; margin: 0 auto; padding: 40px 32px 72px; }
+.masthead { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:28px; border-top:5px solid var(--ink); border-bottom:1px solid var(--ink); margin-bottom:24px; padding:22px 0 18px; }
+.eyebrow { color:var(--orange); font-size:11px; font-weight:750; letter-spacing:.24em; margin-bottom:10px; }
+h1 { margin:0; font-family:var(--font-display); font-size:clamp(38px,5vw,68px); line-height:1; letter-spacing:.02em; font-weight:700; }
+.subtitle { margin:12px 0 0; color:var(--muted); font-size:14px; line-height:1.7; }
+.badge { white-space:nowrap; color:var(--orange); border-left:2px solid var(--orange); border-radius:0; padding:7px 0 7px 14px; background:transparent; font-size:12px; }
+.panel, .chart-card { background:var(--card); border:1px solid var(--line); border-radius:2px; box-shadow:none; }
+.controls { padding:0 20px; margin-bottom:24px; }
+.settings-head { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 0; }
+.settings-title { color:var(--ink); font-family:var(--font-display); font-size:20px; font-weight:700; }
+.settings-summary { margin-top:3px; color:var(--muted); font-size:12px; }
+.settings-toggle { flex:none; border:1px solid var(--line) !important; }
+.settings-content { margin-top:0; padding:4px 0 18px; }
+.controls.collapsed .settings-content { display:none; }
+.control-row { display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; border-top:1px solid var(--line-soft); border-bottom:1px solid var(--line-soft); padding:14px 0; }
+.control-label { color:var(--ink); font-size:13px; font-weight:750; margin-right:2px; }
+button { font:inherit; cursor:pointer; }
+.range-btn, .tiny-btn { border:0; border-bottom:1px solid var(--line); border-radius:0; color:var(--blue); background:transparent; padding:8px 10px; font-size:13px; }
+.range-btn:hover, .range-btn.active { color:var(--orange); border-bottom:2px solid var(--orange); background:transparent; }
+.tiny-btn:hover { color:var(--orange); border-color:var(--orange); background:transparent; }
+.control-note { margin-left:auto; color:var(--muted); font-size:12px; }
+.picker { margin-top:17px; padding-top:15px; }
+.picker-head { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.picker-title { color:var(--ink); font-size:14px; font-weight:750; }
+.selected-count { color:var(--muted); font-size:12px; }
+.picker-actions { display:flex; gap:7px; margin-left:auto; }
+.search { min-width:230px; margin-left:auto; border:1px solid var(--line); border-radius:0; padding:8px 10px; color:var(--ink); background:transparent; font:13px inherit; outline:none; }
+.search:focus { border-color:var(--orange); box-shadow:0 0 0 3px var(--color-accent-soft); }
+.column-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(245px,1fr)); gap:5px 12px; max-height:270px; overflow:auto; margin-top:12px; padding:10px 0; border-top:1px solid var(--line-soft); border-bottom:1px solid var(--line-soft); background:transparent; }
+.column-option { display:flex; align-items:flex-start; gap:8px; min-width:0; padding:7px 8px; border-radius:0; color:var(--ink); font-size:13px; line-height:1.45; }
+.column-option:hover { background:var(--color-accent-soft); }
+.column-option input { flex:none; accent-color:var(--orange); margin-top:3px; }
+.column-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.column-count { flex:none; margin-left:auto; color:var(--muted); font-size:11px; }
+.stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:0; margin:20px 0 18px; border-top:1px solid var(--ink); border-bottom:1px solid var(--line); }
+.stat { min-height:93px; padding:16px 18px; border-right:1px solid var(--line); border-top:3px solid var(--blue); border-radius:0; background:transparent; }
+.stat:last-child { border-right:0; }
+.stat-label { color:var(--muted); font-size:12px; }
+.stat-value { margin-top:8px; color:var(--ink); font-family:var(--font-display); font-size:29px; font-weight:700; line-height:1.15; font-variant-numeric:tabular-nums; }
+.stat-value small { color:var(--muted); font-family:var(--font-body); font-size:12px; font-weight:500; }
+.notice { margin:0 0 20px; padding:11px 14px; border:0; border-left:3px solid var(--orange); border-radius:0; color:var(--muted); background:transparent; font-size:12px; line-height:1.65; }
+.chart-grid { display:grid; grid-template-columns:1fr; gap:20px; }
+.chart-card { min-width:0; padding:18px 18px 14px; }
+.chart-card.wide { grid-column:1/-1; }
+.chart-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; border-bottom:1px solid var(--line); padding:0 0 12px; margin-bottom:4px; }
+.chart-title { color:var(--ink); font-family:var(--font-display); font-size:23px; font-weight:700; }
+.chart-subtitle { margin-top:5px; color:var(--muted); font-size:12px; line-height:1.6; }
+.chart-legend { color:var(--muted); font-size:11px; white-space:nowrap; }
+.chart-body { position:relative; min-width:0; overflow:hidden; border-radius:0; background:var(--card); }
+.chart-scroll { max-height:590px; overflow-y:auto; overflow-x:hidden; }
+.chart-scroll.tall { max-height:650px; }
+.chart-body svg { display:block; width:100%; min-width:0; height:auto; }
+.chart-scroll svg { min-width:0; }
+.empty { min-height:220px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:14px; }
+.footer-note { margin:18px 4px 0; color:var(--muted); font-size:12px; line-height:1.8; }
+.tooltip { position:fixed; z-index:20; pointer-events:none; display:none; max-width:360px; padding:8px 10px; border-radius:2px; color:var(--color-accent-ink); background:var(--ink); box-shadow:var(--shadow-whisper); font-size:12px; line-height:1.55; }
+@media(max-width:960px) { .chart-grid { grid-template-columns:1fr; } .chart-card.wide { grid-column:auto; } .control-note { width:100%; margin-left:0; } }
+@media(max-width:680px) { .page { padding:22px 13px 40px; } .masthead { display:block; } .badge { display:inline-block; margin-top:14px; } .stats { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; } .stat { min-height:80px; padding:12px; } .stat-value { font-size:21px; } .picker-head { align-items:flex-start; } .picker-actions { margin-left:0; } .search { width:100%; margin-left:0; } }
+</style>
+</head>
+<body class="column-dashboard-page">
+  <div id="auth-bar">
+    <div class="auth-bar-inner">
+      <div class="auth-left"><a class="auth-home" href="/" aria-label="返回主页"><span class="home-mark" aria-hidden="true">↖</span><span>主页</span></a></div>
+      <nav class="auth-nav" aria-label="主导航">
+        <div class="nav-menu">
+          <a class="auth-link nav-trigger active" href="/db/" aria-haspopup="true"><span>报纸资料库</span><span class="nav-caret" aria-hidden="true">⌄</span></a>
+          <div class="nav-dropdown" role="menu">
+            <a class="nav-dropdown-item" href="/db/stats/" role="menuitem"><span><strong>各省发稿看板</strong><small>按地区查看发稿量</small></span><span class="nav-arrow" aria-hidden="true">↗</span></a>
+            <a class="nav-dropdown-item active" href="/column-dashboard/" role="menuitem"><span><strong>栏目运行看板</strong><small>栏目状态与趋势</small></span><span class="nav-arrow" aria-hidden="true">↗</span></a>
+          </div>
+        </div>
+        <a class="auth-link" href="/schedule/">排班系统</a>
+      </nav>
+      <div class="auth-right"></div>
+    </div>
+  </div>
+
+<main class="page">
+  <header class="masthead">
+    <div>
+      <div class="eyebrow">中国气象报 · LIVE DATA DASHBOARD</div>
+      <h1>栏目运行情况看板</h1>
+      <p class="subtitle">按月观察栏目发稿量与发布日期间隔 · 默认展示采访中心重点栏目 · 近90天</p>
+    </div>
+    <div class="badge">线上实时 D1 数据</div>
+  </header>
+
+  <section class="panel controls collapsed" id="settings-panel">
+    <div class="settings-head">
+      <div>
+        <div class="settings-title">看板设置</div>
+        <div class="settings-summary"><span>默认设置：</span><span id="settings-summary">采访中心重点栏目 · 近90天</span></div>
+      </div>
+      <button class="tiny-btn settings-toggle" id="settings-toggle" type="button" aria-expanded="false">展开设置</button>
+    </div>
+    <div class="settings-content" id="settings-content">
+      <div class="control-row">
+        <span class="control-label">统计范围</span>
+        <button class="range-btn" data-days="90">近90天</button>
+        <button class="range-btn" data-days="180">近180天</button>
+        <button class="range-btn" data-days="365">近一年</button>
+        <span class="control-note" id="range-note">—</span>
+      </div>
+      <div class="picker">
+        <div class="picker-head">
+          <span class="picker-title">栏目选择</span>
+          <span class="selected-count" id="selected-count">—</span>
+          <div class="picker-actions">
+            <button class="tiny-btn" id="select-all" type="button">全选</button>
+            <button class="tiny-btn" id="clear-all" type="button">清空</button>
+            <button class="tiny-btn" id="focus-columns" type="button">采访中心重点栏目</button>
+          </div>
+          <input class="search" id="column-search" placeholder="搜索栏目名称…" aria-label="搜索栏目">
+        </div>
+        <div class="column-list" id="column-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="stats" aria-label="统计摘要">
+    <div class="stat"><div class="stat-label">选中栏目</div><div class="stat-value" id="stat-columns">—</div></div>
+    <div class="stat"><div class="stat-label">折算月数</div><div class="stat-value" id="stat-months">—</div></div>
+    <div class="stat"><div class="stat-label">栏目—稿件记录</div><div class="stat-value" id="stat-records">—</div></div>
+    <div class="stat"><div class="stat-label">可计算间隔的栏目</div><div class="stat-value" id="stat-gaps">—</div></div>
+  </section>
+  <p class="notice" id="data-note">—</p>
+
+  <section class="chart-grid">
+    <article class="chart-card">
+      <div class="chart-head"><div><div class="chart-title">① 平均每月发稿数量</div></div></div>
+      <div class="chart-body chart-scroll" id="bar-chart"></div>
+    </article>
+
+    <article class="chart-card">
+      <div class="chart-head"><div><div class="chart-title">② 栏目发稿间隔</div><div class="chart-subtitle">箱体：中间50%　红点：平均间隔　竖线：中位数　两端：最小/最大</div></div></div>
+      <div class="chart-body chart-scroll" id="box-chart"></div>
+    </article>
+
+    <article class="chart-card">
+      <div class="chart-head"><div><div class="chart-title">③ 栏目发稿热力图</div><div class="chart-subtitle">颜色越深，发稿越多。</div></div></div>
+      <div class="chart-body chart-scroll tall" id="heat-chart"></div>
+    </article>
+
+    <article class="chart-card">
+      <div class="chart-head"><div><div class="chart-title">④ 栏目散点图</div><div class="chart-subtitle">横轴：平均间隔天数（越靠右越短）；纵轴：平均每月篇数</div></div><div class="chart-legend">悬停气泡查看详情</div></div>
+      <div class="chart-body" id="scatter-chart"></div>
+    </article>
+  </section>
+
+  <p class="footer-note">统计口径：一篇稿件的每个非空 column 值各计 1 条“栏目—稿件记录”；月均篇数按统计窗口天数折算（30 天 = 1 个月），热力图按自然月分桶；间隔按同一栏目不同发布日期去重后排序计算，避免同日多篇稿件产生大量 0 天间隔。空栏目字段未作为栏目展示。</p>
+</main>
+<div class="tooltip" id="tooltip"></div>
+<script>
+let ARTICLES = [];
+let META = { files: 0, minDate: "", maxDate: "", columns: [], counts: {} };
+const $ = (id) => document.getElementById(id);
+const esc = (value) => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const escXml = esc;
+const fmt = (n, digits = 1) => Number.isInteger(n) ? String(n) : Number(n).toFixed(digits);
+const daysBetween = (a, b) => Math.round((Date.parse(b + 'T00:00:00') - Date.parse(a + 'T00:00:00')) / 86400000);
+const monthKey = (date) => date.slice(0, 7);
+const monthLabel = (key) => { const [y,m] = key.split('-'); return `${y}年${Number(m)}月`; };
+const monthShift = (key, delta) => { const [y,m] = key.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + delta, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`; };
+const monthRange = (start, end) => { const out=[]; for(let k=start; k<=end; k=monthShift(k,1)) out.push(k); return out; };
+const quantile = (values, q) => { const a=[...values].sort((x,y)=>x-y); if(!a.length) return null; const p=(a.length-1)*q, lo=Math.floor(p), hi=Math.ceil(p); return a[lo]+(a[hi]-a[lo])*(p-lo); };
+const mean = (values) => values.length ? values.reduce((a,b)=>a+b,0)/values.length : null;
+const niceMax = (max, step) => Math.max(step, Math.ceil((max || step) / step) * step);
+const ticks = (max, count = 5) => Array.from({length:count+1}, (_,i)=>max*i/count);
+const truncate = (value, n=24) => value.length > n ? value.slice(0,n-1) + '…' : value;
+let columns = [];
+const FOCUS_COLUMNS = [
+  '中国气象智能预警方案“妈祖”',
+  '我在现场',
+  '“气象+”赋能经济社会高质量发展',
+  '我和天气打交道',
+  '漫评',
+  '记者观察',
+  '编辑点评',
+  '春雨日记',
+  '时评',
+  '“十五五”开好局起好步',
+];
+let selected = new Set(FOCUS_COLUMNS.filter(name => columns.includes(name)));
+let selectedDays = 90;
+let current = null;
+
+function windowFor(dayCount) {
+  const end = META.maxDate;
+  let rawStart;
+  // 90 天按用户指定的“同日三个月”对齐：2026-09-09 → 2026-06-09。
+  if (dayCount === 90) {
+    rawStart = `${monthShift(end.slice(0,7), -3)}-${end.slice(8)}`;
+  } else {
+    const startDate = new Date(`${end}T00:00:00Z`);
+    startDate.setUTCDate(startDate.getUTCDate() - dayCount);
+    rawStart = startDate.toISOString().slice(0,10);
+  }
+  const start = rawStart < META.minDate ? META.minDate : rawStart;
+  const months = monthRange(start.slice(0,7), end.slice(0,7));
+  const averageDays = rawStart < META.minDate ? daysBetween(start, end) + 1 : dayCount;
+  const averageMonths = averageDays / 30;
+  return { start, end, months, requested: dayCount, averageMonths };
+}
+function metricsFor(window) {
+  const rows = ARTICLES.filter(a => a.d >= window.start && a.d <= window.end);
+  const result = columns.map(name => {
+    const matching = rows.filter(a => a.c.includes(name));
+    const monthly = Object.fromEntries(window.months.map(m => [m, 0]));
+    const dateSet = new Set();
+    for (const row of matching) { monthly[monthKey(row.d)] = (monthly[monthKey(row.d)] || 0) + 1; dateSet.add(row.d); }
+    const dates = [...dateSet].sort();
+    const intervals = dates.slice(1).map((date, i) => daysBetween(dates[i], date));
+    return { name, total: matching.length, monthly, dates, intervals, avgMonthly: matching.length / window.averageMonths, avgGap: mean(intervals), medianGap: quantile(intervals,.5), q1: quantile(intervals,.25), q3: quantile(intervals,.75), minGap: intervals.length ? Math.min(...intervals) : null, maxGap: intervals.length ? Math.max(...intervals) : null };
+  });
+  return { rows, metrics: result.filter(x => selected.has(x.name)), window };
+}
+function svgEmpty(text) { return `<div class="empty">${esc(text)}</div>`; }
+function axisLabel(x,y,text,anchor='middle') { return `<text x="${x}" y="${y}" text-anchor="${anchor}" fill="var(--color-muted)" font-size="12">${esc(text)}</text>`; }
+function tip(text) { return `data-tip="${esc(text)}"`; }
+function renderScatter(items) {
+  const host = $('scatter-chart');
+  const valid = items.filter(x => x.avgGap !== null);
+  if (!valid.length) { host.innerHTML = svgEmpty('当前选择下没有足够的两次不同发布日期，无法绘制间隔散点。'); return; }
+  const W=1160,H=510,L=92,R=34,T=32,B=72, PW=W-L-R, PH=H-T-B;
+  const xmax=niceMax(Math.max(...valid.map(x=>x.avgGap)),10), ymax=niceMax(Math.max(...valid.map(x=>x.avgMonthly)),.5);
+  const sx=v=>L+(xmax-v)/xmax*PW, sy=v=>T+PH-v/ymax*PH;
+  const xt=ticks(xmax,5), yt=ticks(ymax,5);
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="月均发稿量与平均间隔散点图">`;
+  for(const v of xt){const x=sx(v);s+=`<line x1="${x}" y1="${T}" x2="${x}" y2="${T+PH}" stroke="var(--color-paper-3)"/>${axisLabel(x,T+PH+25,fmt(v,0))}`;}
+  for(const v of yt){const y=sy(v);s+=`<line x1="${L}" y1="${y}" x2="${L+PW}" y2="${y}" stroke="var(--color-paper-3)"/>${axisLabel(L-12,y+4,fmt(v,1),'end')}`;}
+  s+=`<line x1="${L}" y1="${T+PH}" x2="${L+PW}" y2="${T+PH}" stroke="var(--color-rule-strong)" stroke-width="1.5"/><line x1="${L}" y1="${T}" x2="${L}" y2="${T+PH}" stroke="var(--color-rule-strong)" stroke-width="1.5"/>`;
+  s+=axisLabel(L+PW/2,H-20,'平均间隔天数'); s+=`<text x="22" y="${T+PH/2}" text-anchor="middle" transform="rotate(-90 22 ${T+PH/2})" fill="var(--color-muted)" font-size="12">平均每月篇数</text>`;
+  for(const item of valid){const x=sx(item.avgGap),y=sy(item.avgMonthly),r=10;const text=`${item.name}｜${fmt(item.avgMonthly)} 篇/月｜平均间隔 ${fmt(item.avgGap)} 天｜${item.total} 条栏目稿件记录`;
+    s+=`<g class="tip-target" ${tip(text)}><circle cx="${x}" cy="${y}" r="${r}" fill="var(--color-danger)" fill-opacity=".78" stroke="var(--color-accent-ink)" stroke-width="2"/><title>${esc(text)}</title></g>`;
+  }
+  if(valid.length<=24){
+    const placedLabels=[];
+    for(const item of valid){
+      const x=sx(item.avgGap), y=sy(item.avgMonthly), label=truncate(item.name,12), width=Math.max(36,label.length*11);
+      const candidates=[
+        {left:x+14, top:y-23, baseline:y-10, anchor:'start'},
+        {left:x+14, top:y+7, baseline:y+20, anchor:'start'},
+        {left:x-14-width, top:y-23, baseline:y-10, anchor:'end'},
+        {left:x-14-width, top:y+7, baseline:y+20, anchor:'end'},
+      ];
+      const chosen=candidates.find(candidate => candidate.left>=L+2 && candidate.left+width<=L+PW-2 && candidate.top>=T+2 && candidate.top+16<=T+PH-2 && placedLabels.every(previous => candidate.left>previous.right+4 || candidate.left+width<previous.left-4 || candidate.top>previous.bottom+4 || candidate.top+16<previous.top-4));
+      if(chosen){
+        placedLabels.push({left:chosen.left,right:chosen.left+width,top:chosen.top,bottom:chosen.top+16});
+        const textX=chosen.anchor==='start' ? chosen.left : chosen.left+width;
+        s+=`<text x="${textX}" y="${chosen.baseline}" text-anchor="${chosen.anchor}" fill="var(--color-ink)" font-size="11">${esc(label)}</text>`;
+      }
+    }
+  }
+  s+=`<text x="${L+PW-4}" y="${T+18}" text-anchor="end" fill="var(--color-faint)" font-size="11">右上 = 高频、短周期</text></svg>`;
+  host.innerHTML=s; bindTips(host);
+}
+function renderBars(items) {
+  const host=$('bar-chart');
+  if(!items.length){host.innerHTML=svgEmpty('请至少选择一个栏目。');return;}
+  const sorted=[...items].sort((a,b)=>b.avgMonthly-a.avgMonthly || a.name.localeCompare(b.name,'zh-CN'));
+  const W=1160,rowH=31,H=58+sorted.length*rowH,L=235,R=125,T=28,B=38,PW=W-L-R;
+  const xmax=niceMax(Math.max(...sorted.map(x=>x.avgMonthly)),.5), sx=v=>L+v/xmax*PW;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="平均每月发稿数量">`;
+  for(const v of ticks(xmax,5)){const x=sx(v);s+=`<line x1="${x}" y1="${T-8}" x2="${x}" y2="${H-B}" stroke="var(--color-paper-3)"/>${axisLabel(x,H-10,fmt(v,1))}`;}
+  sorted.forEach((item,i)=>{const y=T+i*rowH+rowH/2, end=sx(item.avgMonthly), text=`${item.name}｜${fmt(item.avgMonthly)} 篇/月｜窗口内 ${item.total} 篇`;
+    s+=`${axisLabel(L-15,y+4,truncate(item.name,18),'end')}<rect x="${L}" y="${y-8}" width="${PW}" height="16" rx="5" fill="var(--color-paper-3)"/><rect x="${L}" y="${y-8}" width="${Math.max(0,end-L)}" height="16" rx="5" fill="var(--color-accent)" ${tip(text)}/>${axisLabel(end+10,y+4,`${fmt(item.avgMonthly)} 篇/月`,'start')}`;
+  });
+  s+=`<text x="${L+PW/2}" y="${H-1}" text-anchor="middle" fill="var(--color-muted)" font-size="12">平均每月发稿数量</text></svg>`;
+  host.innerHTML=s;bindTips(host);
+}
+function renderBox(items) {
+  const host=$('box-chart');
+  const valid=items.filter(x=>x.intervals.length>0).sort((a,b)=>a.avgGap-b.avgGap);
+  if(!valid.length){host.innerHTML=svgEmpty('当前选择下没有足够的两次不同发布日期，无法绘制间隔箱线图。');return;}
+  const W=1160,rowH=36,H=60+valid.length*rowH,L=235,R=40,T=28,B=40,PW=W-L-R;
+  const xmax=niceMax(Math.max(...valid.map(x=>x.maxGap)),10), sx=v=>L+v/xmax*PW;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="栏目稿件间隔天数箱线图">`;
+  for(const v of ticks(xmax,5)){const x=sx(v);s+=`<line x1="${x}" y1="${T-8}" x2="${x}" y2="${H-B}" stroke="var(--color-paper-3)"/>${axisLabel(x,H-10,fmt(v,0))}`;}
+  valid.forEach((item,i)=>{const y=T+i*rowH+rowH/2;const min=sx(item.minGap),q1=sx(item.q1),med=sx(item.medianGap),q3=sx(item.q3),max=sx(item.maxGap),avg=sx(item.avgGap);const text=`${item.name}｜平均 ${fmt(item.avgGap)} 天｜中位数 ${fmt(item.medianGap)} 天｜${item.intervals.length} 个间隔`;
+    s+=`${axisLabel(L-15,y+4,truncate(item.name,18),'end')}<line x1="${min}" y1="${y}" x2="${max}" y2="${y}" stroke="var(--color-rule-strong)" stroke-width="2"/><line x1="${min}" y1="${y-8}" x2="${min}" y2="${y+8}" stroke="var(--color-rule-strong)" stroke-width="2"/><line x1="${max}" y1="${y-8}" x2="${max}" y2="${y+8}" stroke="var(--color-rule-strong)" stroke-width="2"/><rect x="${q1}" y="${y-12}" width="${Math.max(2,q3-q1)}" height="24" rx="3" fill="var(--color-accent-soft)" stroke="var(--color-accent)" stroke-width="1.5" ${tip(text)}/><line x1="${med}" y1="${y-12}" x2="${med}" y2="${y+12}" stroke="var(--color-accent)" stroke-width="3"/><circle cx="${avg}" cy="${y}" r="5" fill="var(--color-danger)" stroke="var(--color-accent-ink)" stroke-width="1.5"/>`;
+  });
+  s+=`<text x="${L+PW/2}" y="${H-1}" text-anchor="middle" fill="var(--color-muted)" font-size="12">相邻发布日期间隔天数</text></svg>`;
+  host.innerHTML=s;bindTips(host);
+}
+function heatColor(value,max){if(!value)return 'var(--color-paper-2)';const t=Math.min(1,value/Math.max(1,max));return `color-mix(in srgb, var(--color-paper-2) ${Math.round((1-t)*100)}%, var(--color-accent))`;}
+function heatTextColor(value,max){const t=Math.min(1,value/Math.max(1,max));return t>=.5?'var(--color-paper)':'var(--color-ink)';}
+function heatLabel(x,y,text,value,max){return `<text x="${x}" y="${y}" text-anchor="middle" fill="${heatTextColor(value,max)}" font-size="12" font-weight="600">${esc(text)}</text>`;}
+function renderHeat(items, months) {
+  const host=$('heat-chart');
+  if(!items.length){host.innerHTML=svgEmpty('请至少选择一个栏目。');return;}
+  const W=Math.max(920,260+months.length*115),cellW=105,rowH=30,H=58+items.length*rowH,L=250,T=46,B=42;
+  const max=Math.max(1,...items.flatMap(x=>months.map(m=>x.monthly[m]||0)));
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="栏目按月发稿热力图">`;
+  months.forEach((m,j)=>{const x=L+j*cellW+cellW/2;s+=axisLabel(x,T-15,monthLabel(m));});
+  items.slice().sort((a,b)=>b.avgMonthly-a.avgMonthly || a.name.localeCompare(b.name,'zh-CN')).forEach((item,i)=>{const y=T+i*rowH; s+=axisLabel(L-14,y+20,truncate(item.name,19),'end');months.forEach((m,j)=>{const value=item.monthly[m]||0,x=L+j*cellW+3;const text=`${item.name}｜${monthLabel(m)}：${value} 篇`;s+=`<rect x="${x}" y="${y+3}" width="${cellW-6}" height="${rowH-6}" rx="4" fill="${heatColor(value,max)}" ${tip(text)}/>${value?heatLabel(x+(cellW-6)/2,y+21,String(value),value,max):''}`;});});
+  s+=`</svg>`;
+  host.innerHTML=s;bindTips(host);
+}
+function bindTips(host){const tooltip=$('tooltip');host.querySelectorAll('[data-tip]').forEach(node=>{node.addEventListener('pointerenter',e=>{tooltip.textContent=node.getAttribute('data-tip');tooltip.style.display='block';});node.addEventListener('pointermove',e=>{tooltip.style.left=`${e.clientX+14}px`;tooltip.style.top=`${e.clientY+14}px`;});node.addEventListener('pointerleave',()=>{tooltip.style.display='none';});});}
+function renderPicker(){const query=$('column-search').value.trim().toLowerCase();const list=$('column-list');list.innerHTML='';columns.filter(name=>!query||name.toLowerCase().includes(query)).forEach(name=>{const label=document.createElement('label');label.className='column-option';label.innerHTML=`<input type="checkbox" ${selected.has(name)?'checked':''}><span class="column-name" title="${esc(name)}">${esc(name)}</span><span class="column-count">${META.counts[name]||0}</span>`;label.querySelector('input').addEventListener('change',e=>{if(e.target.checked)selected.add(name);else selected.delete(name);render();});list.appendChild(label);});$('selected-count').textContent=`已选 ${selected.size} / ${columns.length}`;}
+function renderSettingsSummary(){const isFocus=selected.size===FOCUS_COLUMNS.length && FOCUS_COLUMNS.every(name=>selected.has(name));const period=selectedDays===90?'近90天':selectedDays===180?'近180天':'近一年';$('settings-summary').textContent=`${isFocus?'采访中心重点栏目':`已选 ${selected.size} 个栏目`} · ${period}`;}
+function render(){renderSettingsSummary();current=metricsFor(windowFor(selectedDays));const {metrics,window,rows}=current;const gapCount=metrics.filter(x=>x.intervals.length>0).length;$('stat-columns').innerHTML=`${selected.size}<small> 个</small>`;$('stat-months').innerHTML=`${fmt(window.averageMonths)}<small> 个月</small>`;$('stat-records').innerHTML=`${metrics.reduce((sum,x)=>sum+x.total,0)}<small> 条</small>`;$('stat-gaps').innerHTML=`${gapCount}<small> 个</small>`;$('range-note').textContent=`${window.start.replaceAll('-','.') } — ${window.end.replaceAll('-','.')} · ${rows.length} 篇原始稿件`;$('data-note').textContent=`线上 D1 真源：${META.files} 篇稿件，日期 ${META.minDate} 至 ${META.maxDate}；当前窗口覆盖 ${window.months.length} 个自然月（${selectedDays} 天口径）。未标注栏目稿件 ${rows.filter(a=>!a.c.length).length} 篇，不参与栏目统计。`;
+  renderPicker();renderScatter(metrics);renderBars(metrics);renderBox(metrics);renderHeat(metrics,window.months);document.querySelectorAll('.range-btn').forEach(b=>b.classList.toggle('active',Number(b.dataset.days)===selectedDays));}
+$('settings-toggle').addEventListener('click',()=>{const panel=$('settings-panel'),button=$('settings-toggle'),expanded=panel.classList.toggle('collapsed')===false;button.textContent=expanded?'收起设置':'展开设置';button.setAttribute('aria-expanded',String(expanded));});$('select-all').addEventListener('click',()=>{selected=new Set(columns);render();});$('clear-all').addEventListener('click',()=>{selected.clear();render();});$('focus-columns').addEventListener('click',()=>{selected=new Set(FOCUS_COLUMNS.filter(name=>columns.includes(name)));render();});$('column-search').addEventListener('input',renderPicker);document.querySelectorAll('.range-btn').forEach(b=>b.addEventListener('click',()=>{selectedDays=Number(b.dataset.days);render();}));
+async function loadData() {
+  try {
+    const response = await fetch("/api/column-stats", { cache: "no-store" });
+    if (!response.ok) throw new Error(`/api/column-stats ${response.status}`);
+    const data = await response.json();
+    ARTICLES = data.articles || [];
+    META = data;
+    columns = [...META.columns].sort((a,b) => (META.counts[b] || 0) - (META.counts[a] || 0) || a.localeCompare(b,'zh-CN'));
+    selected = new Set(FOCUS_COLUMNS.filter(name => columns.includes(name)));
+    render();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "请求失败";
+    $("data-note").textContent = `无法加载线上栏目数据：${message}`;
+    $("data-note").classList.add("error");
+  }
+}
+loadData();</script>
+  <script src="/auth.js"></script>
+</body>
+</html>

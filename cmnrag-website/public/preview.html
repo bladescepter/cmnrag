@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>界面预览 · 采访中心工具集</title>
+  <link rel="stylesheet" href="/site.css" />
+</head>
+<body class="home-page preview-page">
+  <div id="auth-bar">
+    <div class="auth-bar-inner">
+      <div class="auth-left"><a class="auth-home" href="/preview/" aria-label="预览首页"><span class="home-mark" aria-hidden="true">↖</span><span>主页</span></a></div>
+      <nav class="auth-nav" aria-label="主导航">
+        <div class="nav-menu">
+          <a class="auth-link nav-trigger" href="/preview/db/" aria-haspopup="true"><span>报纸资料库</span><span class="nav-caret" aria-hidden="true">⌄</span></a>
+          <div class="nav-dropdown" role="menu">
+            <a class="nav-dropdown-item" href="/preview/stats/" role="menuitem"><span><strong>各省发稿看板</strong><small>按地区查看发稿量</small></span><span class="nav-arrow" aria-hidden="true">↗</span></a>
+            <a class="nav-dropdown-item" href="/preview/column-dashboard/" role="menuitem"><span><strong>栏目运行看板</strong><small>栏目状态与趋势</small></span><em>预览</em></a>
+          </div>
+        </div>
+        <a class="auth-link" href="/preview/schedule/">排班系统</a>
+      </nav>
+      <div class="auth-right"><span class="auth-name">界面预览</span></div>
+    </div>
+  </div>
+
+  <main class="home-dashboard">
+    <a class="dashboard-news" href="/preview/changelog/" aria-label="查看最新一期更新日志"><p id="latest-changelog" class="dashboard-update-text">✨ 1. 上线6月报纸资料；2. 排班系统初步可用；3. 增设各省发稿数量统计栏目。</p></a>
+    <h1 class="dashboard-title">采访中心工具集</h1>
+    <a class="dashboard-archive" href="/preview/db/" aria-label="进入报纸资料库"><div><h2>报纸资料库</h2><p>结构化检索 · 全文阅读 · AI 综合问答</p></div><span class="dashboard-card-arrow" aria-hidden="true">↗</span></a>
+    <section class="dashboard-tools" aria-label="工具入口">
+      <a class="dashboard-tool-card" href="/preview/schedule/"><h2>排班系统</h2><p>自动按周期生成具有随机性的排班。</p><span class="dashboard-card-arrow" aria-hidden="true">↗</span></a>
+      <a class="dashboard-tool-card" href="/preview/proofread/"><h2>校对工具</h2><p>建设中</p><span class="dashboard-card-arrow" aria-hidden="true">↗</span></a>
+    </section>
+  </main>
+
+  <footer class="site-footer"><strong>采访中心工具集</strong><span>静态界面预览 · 业务页面仍保留登录校验</span></footer>
+</body>
+</html>

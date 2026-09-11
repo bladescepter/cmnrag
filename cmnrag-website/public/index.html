@@ -4,95 +4,56 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>采访中心工具集</title>
-  <style>
-    :root { --ink:#14213d; --muted:#667085; --line:#dce3ec; --blue:#155eef; --bg:#f6f8fb; --card:#fff; }
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif}
-    header{background:#123b72;color:white;padding:42px max(24px,calc((100vw - 1180px)/2));box-shadow:0 2px 8px #071b3930} h1{font-size:26px;margin:0 0 10px;font-weight:700} header p{margin:0;color:#d5e5ff;font-size:14px;line-height:1.7}
-    main{max-width:1180px;margin:30px auto;padding:0 24px}
-    .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
-    .card{display:block;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px;text-decoration:none;color:var(--ink);box-shadow:0 2px 8px #15233a0b;transition:border-color .15s,box-shadow .15s}
-    .card:hover{border-color:#84adff;box-shadow:0 6px 18px #155eef18}
-    .card-title{font-size:17px;font-weight:700;display:flex;align-items:center;gap:9px;margin-bottom:9px}
-    .card p{margin:0 0 12px;font-size:13.5px;color:var(--muted);line-height:1.7}
-    .card-meta{font-size:12.5px;color:#98a2b3}
-    .badge{border-radius:99px;padding:2px 9px;font-size:12px;font-weight:650;white-space:nowrap}
-    .badge.ok{background:#eafaf1;color:#16794b}
-    .badge.wip{background:#f2f4f7;color:#98a2b3}
-    footer{max-width:1180px;margin:40px auto 30px;padding:0 24px;color:#98a2b3;font-size:12.5px;text-align:center}
-    .changelog-entry{display:grid;grid-template-columns:auto 1fr;gap:10px;font-size:12.5px;line-height:1.65;color:var(--muted)}
-    .changelog-date{color:#667085;white-space:nowrap}
-    .changelog-latest-title{font-size:14px;font-weight:650;color:var(--ink);line-height:1.45}
-    .changelog-latest-summary{margin:3px 0 0!important;font-size:13px!important;line-height:1.6!important}
-    @media(max-width:860px){.cards{grid-template-columns:1fr}}
-    /* 顶部导航栏（静态内联；auth.js 同款兜底）*/
-    #auth-bar{background:#0d2b52;color:#d5e5ff;font-size:13.5px;box-shadow:0 2px 8px #071b3930;position:sticky;top:0;z-index:40}
-    #auth-bar .auth-bar-inner{max-width:1180px;margin:0 auto;padding:10px 24px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px}
-    #auth-bar .auth-left{justify-self:start}
-    #auth-bar .auth-nav{justify-self:center;display:flex;gap:6px;align-items:center}
-    #auth-bar .auth-right{justify-self:end;display:flex;gap:14px;align-items:center}
-    #auth-bar .auth-home{color:#a8c7ff;text-decoration:none;font-weight:650;white-space:nowrap;padding:6px 0}
-    #auth-bar .auth-home:hover{color:#fff}
-    #auth-bar .auth-link{color:#d5e5ff;text-decoration:none;cursor:pointer;background:none;border:none;font-size:13.5px;padding:6px 12px;border-radius:6px;white-space:nowrap}
-    #auth-bar .auth-link:hover{color:#fff;background:#ffffff1a}
-    #auth-bar .auth-link.active{color:#fff;background:#ffffff1f;font-weight:650}
-    #auth-bar .auth-name{color:#cfe2ff;white-space:nowrap}
-    #auth-bar .auth-btn{padding:6px 0}
-    @media(max-width:860px){#auth-bar .auth-bar-inner{grid-template-columns:1fr auto;padding:8px 14px;gap:6px 12px}#auth-bar .auth-nav{grid-column:1/-1;grid-row:2;justify-self:center}}
-  </style>
+  <link rel="stylesheet" href="/site.css" />
 </head>
-<body>
-<div id="auth-bar"><div class="auth-bar-inner"><div class="auth-left"><a class="auth-home" href="/">‹ 返回主页</a></div><nav class="auth-nav"><a class="auth-link" href="/db">报纸资料库</a><a class="auth-link" href="/schedule">排班系统</a></nav><div class="auth-right"></div></div></div>
-<header><h1>采访中心工具集</h1><p>当前策划了报纸资料库、排班工具两项。</p></header>
-<main>
-  <section class="cards">
-    <a class="card" href="/db">
-      <div class="card-title">报纸资料库<span class="badge ok">可用</span></div>
-      <p>结构化检索 · 全文阅读 · AI 综合问答</p>
-      <div class="card-meta">数据均来自公开报道，不涉及保密内容。</div>
+<body class="home-page">
+  <div id="auth-bar">
+    <div class="auth-bar-inner">
+      <div class="auth-left"><a class="auth-home" href="/" aria-label="返回主页"><span class="home-mark" aria-hidden="true">↖</span><span>主页</span></a></div>
+      <nav class="auth-nav" aria-label="主导航">
+        <div class="nav-menu">
+          <a class="auth-link nav-trigger" href="/db" aria-haspopup="true"><span>报纸资料库</span><span class="nav-caret" aria-hidden="true">⌄</span></a>
+          <div class="nav-dropdown" role="menu">
+            <a class="nav-dropdown-item" href="/db/stats" role="menuitem"><span><strong>各省发稿看板</strong><small>按地区查看发稿量</small></span><span class="nav-arrow" aria-hidden="true">↗</span></a>
+            <a class="nav-dropdown-item" href="/column-dashboard/" role="menuitem"><span><strong>栏目运行看板</strong><small>栏目状态与趋势</small></span><span class="nav-arrow" aria-hidden="true">↗</span></a>
+          </div>
+        </div>
+        <a class="auth-link" href="/schedule">排班系统</a>
+      </nav>
+      <div class="auth-right"></div>
+    </div>
+  </div>
+
+  <main class="home-dashboard">
+    <a class="dashboard-news" href="/changelog" aria-label="查看最新一期更新日志">
+      <p id="latest-changelog" class="dashboard-update-text">✨ 1. 上线6月报纸资料；2. 排班系统初步可用；3. 增设各省发稿数量统计栏目。</p>
     </a>
-    <a class="card" href="/schedule">
-      <div class="card-title">排班系统<span class="badge ok">可用</span></div>
-      <p>自动按周期生成具有随机性的排班。</p>
+
+    <h1 class="dashboard-title">采访中心工具集</h1>
+
+    <a class="dashboard-archive" href="/db" aria-label="进入报纸资料库">
+      <div><h2>报纸资料库</h2><p>结构化检索 · 全文阅读 · AI 综合问答</p></div>
+      <span class="dashboard-card-arrow" aria-hidden="true">↗</span>
     </a>
-    <a class="card" href="/changelog" aria-label="查看更新日志">
-      <div class="card-title">更新日志</div>
-      <div id="latest-changelog">
-        <div class="changelog-entry"><time class="changelog-date" datetime="2026-09-03">2026年9月3日</time><div><div class="changelog-latest-title">6月资料上线与功能更新</div><p class="changelog-latest-summary">1. 上线6月报纸资料；2. 排班系统初步可用；3. 增设各省发稿数量统计栏目，入口在报纸资料库右侧，可直观查看各省发稿数量。</p></div></div>
-      </div>
-      <div class="card-meta">查看全部更新 →</div>
-    </a>
-  </section>
-</main>
-<footer>采访中心工具集 · 内部工具</footer>
-<script>
-(async () => {
-  const target = document.querySelector('#latest-changelog');
-  try {
-    const response = await fetch('/changelog.json', { cache: 'no-store' });
-    if (!response.ok) return;
-    const data = await response.json();
-    const latest = data.entries?.[0];
-    if (!latest) return;
-    target.innerHTML = '';
-    const entry = document.createElement('div');
-    entry.className = 'changelog-entry';
-    const date = document.createElement('time');
-    date.className = 'changelog-date';
-    date.dateTime = latest.date || '';
-    date.textContent = latest.dateLabel || latest.date || '';
-    const details = document.createElement('div');
-    const title = document.createElement('div');
-    title.className = 'changelog-latest-title';
-    title.textContent = latest.title || '';
-    const summary = document.createElement('p');
-    summary.className = 'changelog-latest-summary';
-    summary.textContent = latest.summary || '';
-    details.append(title, summary);
-    entry.append(date, details);
-    target.append(entry);
-  } catch (_) {}
-})();
-</script>
-<script src="/auth.js"></script>
+
+    <section class="dashboard-tools" aria-label="工具入口">
+      <a class="dashboard-tool-card" href="/schedule"><h2>排班系统</h2><p>自动按周期生成具有随机性的排班。</p><span class="dashboard-card-arrow" aria-hidden="true">↗</span></a>
+      <a class="dashboard-tool-card" href="/proofread"><h2>校对工具</h2><p>建设中</p><span class="dashboard-card-arrow" aria-hidden="true">↗</span></a>
+    </section>
+  </main>
+
+  <footer class="site-footer"><strong>采访中心工具集</strong><span>内部工具 · 中国气象报采访中心</span></footer>
+  <script>
+  (async () => {
+    const target = document.querySelector('#latest-changelog');
+    try {
+      const response = await fetch('/changelog.json', { cache: 'no-store' });
+      if (!response.ok) return;
+      const latest = (await response.json()).entries?.[0];
+      if (latest?.summary) target.textContent = `✨ ${latest.summary}`;
+    } catch (_) {}
+  })();
+  </script>
+  <script src="/auth.js"></script>
 </body>
 </html>

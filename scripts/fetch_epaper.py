@@ -16,18 +16,20 @@
   默认保存在本项目 cmnrag/ 子目录（不再写 VPS /opt/data）。
   可用环境变量 CMNRAG_DATA_DIR 覆盖。
 
-后续步骤 (手动):
-  1. 对每个版面截图运行 vision_analyze 识别栏目和头条
-  2. 按视觉结果修正 column / headline / region
-  3. 拆分"要闻简报"类合并稿件
-  4. 补副刊等 API 缺的作者名
+后续步骤 (手动，全部由当前 LLM 执行；脚本内不含任何硬编码模型调用):
+  1. python scripts/fetch_epaper.py --apply-titles YYYYMMDD    # 当前 LLM 填好概括后回写图片新闻标题
+  2. python scripts/enrich_regions.py YYYYMMDD                 # 打印待判清单
+     python scripts/enrich_regions.py --apply YYYYMMDD regions.json
+  3. python scripts/column_detect.py YYYYMMDD                  # 下载版面图
+     python scripts/col_vision_run.py YYYYMMDD                 # 产出裁剪图清单
+     （当前 LLM 读原图识别栏目，写 column_test/YYYYMMDD_BC_vision.json）
+     python scripts/column_detect.py YYYYMMDD                  # 匹配并写入 column
 
-图片新闻标题规范 (2026-08 用户确认；2026-08-29 起改为命名环节直接生成):
+图片新闻标题规范 (2026-08 用户确认):
   - 所有图片新闻统一使用标题「图片新闻：XXXX」，XXXX 为内容概括短语（如"图片新闻：漳浦龙舟赛气象保障"）。
-  - 抓取时由脚本调用文本 LLM（Nous Portal deepseek/deepseek-v4-flash，NOUS_API_KEY）将图注概括为
-    8-12 字短语，直接生成「图片新闻：XXXX」，同步用于 frontmatter title 与文件名，不留到审核环节；
-    审核只需微调概括短语。
-  - LLM 失败时回退为「图片新闻：<图注截断>」，仍保证格式合规。
+  - 抓取时脚本只写占位标题「图片新闻：<图注截断>」，并输出待概括清单
+    （cmnrag/column_test/YYYYMMDD_pic_titles.json，含 page/order/file/caption）；
+    由当前 LLM 概括 8-12 字短语填入 title，再由 --apply-titles 回写 frontmatter title 与文件名。
   - 文件名禁止残留 HTML 实体、分隔符和多余符号（sanitize_filename 已处理）。
 """
 
@@ -737,6 +739,20 @@ KNOWN_AUTHORS = {
     "邢峰华", "邢曼曼", "邹承峰", "金铸钰", "陈兵强", "陈冬宇", "陈小敏",
     "韦铭贵", "韩熠", "马圣媛", "高凡", "高瑞晗", "黄莉丽",
 
+    # 20260910 新增（审核确认）
+    "刘海洋", "周建锋", "姚凤", "孙静", "常大帅", "张天钰", "张芳琳",
+    "曲哲", "李修仓", "李小杰", "李静", "林玉", "樊儒儒", "沈晓琳",
+    "沈涛", "王文刚", "王远哲", "胡思义", "范明", "蔡亚男", "谢晶心",
+    "邵鹏程", "金赟", "钟鑫", "陈君清", "陈意曼", "魏超", "张小云", "朱亚峰",
+    # 20260902 三版05 图片新闻图/文署名（“文”为角色字，修正后补入）
+    "漆永亮",
+
+    # 20260911 新增（审核确认）
+    "万凌云", "丛美环", "伊吉勒", "刘跃", "吴瑕", "周均燕", "张小萍",
+    "戴旭", "朱盈兵", "李庭轩", "李思航", "李朝良", "杨席康", "王俊杰",
+    "种丹", "符大贤", "罗婷", "罗焕梅", "胡期望", "詹宏剑", "谭萍",
+    "贺彦玲", "达来木仁", "邓晓婷", "郯俊岭", "鲁峰", "黄锦群",
+
 }
 
 # 姓氏先验：库内已知名首字频率（大姓如王李张刘陈频率高 → 更可信）
@@ -764,71 +780,100 @@ def curl_post(url, data):
         return None
 
 
-# ===== 图片新闻标题概括（文本 LLM：Nous Portal deepseek/deepseek-v4-flash）=====
-LLM_API_BASE = "https://inference-api.nousresearch.com/v1/chat/completions"
-LLM_MODEL = "deepseek/deepseek-v4-flash"
+# ===== 图片新闻标题（占位 + 当前 LLM 概括 + --apply-titles 回写）=====
+# 脚本不调用任何模型：只写确定性占位标题并输出待概括清单，概括短语由当前 LLM 填写。
+PIC_TITLE_PENDING = []  # [{page, order, file, caption, title}]
 
 
-def _load_env_file(path):
-    env = {}
-    if os.path.exists(path):
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                m = re.match(r'^\s*([^#=]+)=(.*)$', line)
-                if m:
-                    env[m.group(1).strip()] = m.group(2).strip().strip('"').strip("'")
-    return env
+def pic_placeholder_title(pic_title):
+    """确定性占位标题；概括短语由当前 LLM 在 --apply-titles 环节补写。"""
+    pic_title = (pic_title or "").strip()
+    if pic_title.startswith("图片新闻"):
+        return pic_title
+    tail = re.sub(r'^\s*(?:[0-9]+月[0-9]+日，?|近日|日前|连日来|今年以来|今年|昨日|当天)\s*', '', pic_title)
+    return f"图片新闻：{tail[:15]}" if tail else "图片新闻"
 
 
-def _llm_key():
-    home = _load_env_file(os.path.join(os.path.expanduser("~"), ".pi", "agent", ".env"))
-    if home.get("NOUS_API_KEY"):
-        return home["NOUS_API_KEY"]
-    if os.environ.get("NOUS_API_KEY"):
-        return os.environ["NOUS_API_KEY"]
-    proj = _load_env_file(os.path.join(PROJECT_ROOT, ".env"))
-    return (proj.get("NOUS_API_KEY") or proj.get("OPENCODE_GO_API_KEY")
-            or os.environ.get("OPENCODE_GO_API_KEY"))
-
-
-def summarize_pic_title(caption):
-    """图注 → 8-12 字内容概括短语（图片新闻标题 XXXX 部分）；失败返回空串。"""
-    key = _llm_key()
-    if not key:
-        return ""
-    caption = re.sub(r'^[◀▼▶▲◆]\s*', '', (caption or "")).strip()
-    if not caption:
-        return ""
-    prompt = (
-        "这是《中国气象报》一条图片新闻的图注：\n"
-        f"{caption[:300]}\n\n"
-        "请用 8-12 个汉字概括这条图片新闻的核心内容，格式为「地点+主题」，"
-        "如「遂溪海洋牧场投放海气观测浮标」「漳浦龙舟赛气象保障」。"
-        "不要输出引号、标点或任何解释，只输出概括短语。"
-    )
-    payload = json.dumps({
-        "model": LLM_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 60,
+def record_pic_title_pending(page, order, fname, caption):
+    PIC_TITLE_PENDING.append({
+        "page": page,
+        "order": order,
+        "file": fname,
+        "caption": re.sub(r'\s+', ' ', (caption or '')).strip()[:300],
+        "title": "",
     })
-    try:
-        r = subprocess.run(
-            ["curl", "-s", "--connect-timeout", "10", "--max-time", "30",
-             "-H", f"Authorization: Bearer {key}",
-             "-H", "Content-Type: application/json",
-             "-d", payload, LLM_API_BASE],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=40,
-        )
-        if r.returncode != 0:
-            return ""
-        data = json.loads(r.stdout)
-        content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
-        content = re.sub(r'[\s"“”\'‘’、。，：:；]+', '', content).strip()
-        if 2 <= len(content) <= 20:
-            return content
-    except Exception as e:
-        print(f"  ⚠ 图片新闻概括失败: {e}", file=sys.stderr)
-    return ""
+
+
+def write_pic_title_pending(date_str):
+    """输出待概括清单，供当前 LLM 填 title 后由 --apply-titles 回写。无待办则不写。"""
+    if not PIC_TITLE_PENDING:
+        return None
+    out_dir = os.path.join(OUT_BASE, "column_test")
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, f"{date_str}_pic_titles.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(PIC_TITLE_PENDING, f, ensure_ascii=False, indent=2)
+    print(f"\n图片新闻待概括 {len(PIC_TITLE_PENDING)} 篇 -> {path}")
+    for item in PIC_TITLE_PENDING:
+        print(f"    {item['page']} {item['order']:02d}: {item['caption'][:70]}")
+    print("  下一步：由当前 LLM 填 title（「图片新闻：XXXX」，8-12 字概括），再运行")
+    print(f"    python scripts/fetch_epaper.py --apply-titles {date_str}")
+    return path
+
+
+def apply_pic_titles(date_str):
+    """读取待办清单（title 已由当前 LLM 填好）→ 改 frontmatter title + 文件名。"""
+    path = os.path.join(OUT_BASE, "column_test", f"{date_str}_pic_titles.json")
+    if not os.path.exists(path):
+        print(f"错误: 待概括清单不存在 {path}")
+        sys.exit(1)
+    with open(path, encoding="utf-8") as f:
+        items = json.load(f)
+    changed = skipped = failed = 0
+    for item in items:
+        title = str(item.get("title") or "").strip()
+        if not title:
+            skipped += 1
+            continue
+        if not title.startswith("图片新闻"):
+            title = f"图片新闻：{title}"
+        page = str(item.get("page") or "").strip()
+        order = int(item.get("order") or 0)
+        page_dir = os.path.join(month_dir(date_str), page)
+        src = os.path.join(page_dir, str(item.get("file") or ""))
+        if not os.path.exists(src):
+            candidates = ([n for n in os.listdir(page_dir) if n.startswith(f"{order:02d}-")]
+                          if os.path.isdir(page_dir) else [])
+            if len(candidates) != 1:
+                print(f"  [x] {page} {order:02d} 找不到原稿: {item.get('file')}")
+                failed += 1
+                continue
+            src = os.path.join(page_dir, candidates[0])
+        with open(src, encoding="utf-8") as f:
+            text = f.read()
+        if not re.search(r"^title:", text, re.MULTILINE):
+            print(f"  [x] {page} {order:02d} frontmatter 缺少 title，跳过")
+            failed += 1
+            continue
+        new_text = re.sub(r'^title:.*$', lambda _m: f"title: {title}", text, count=1, flags=re.MULTILINE)
+        dst = os.path.join(page_dir, f"{order:02d}-{sanitize_filename(title)}.md")
+        if os.path.exists(dst) and os.path.abspath(dst) != os.path.abspath(src):
+            print(f"  [x] 目标文件名已存在，跳过: {os.path.basename(dst)}")
+            failed += 1
+            continue
+        if new_text != text:
+            with open(src, "w", encoding="utf-8", newline="") as f:
+                f.write(new_text)
+        if os.path.abspath(dst) != os.path.abspath(src):
+            os.replace(src, dst)
+        item["file"] = os.path.basename(dst)
+        changed += 1
+        print(f"  [ok] {page} {order:02d} -> {os.path.basename(dst)}")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(items, f, ensure_ascii=False, indent=2)
+    print(f"\n图片新闻标题更新 {changed} 篇"
+          + (f"，未填 {skipped} 篇" if skipped else "")
+          + (f"，失败 {failed} 篇" if failed else ""))
 
 
 def clean_html(text):
@@ -1029,9 +1074,28 @@ def _add_author_names(target, raw, strict=False):
         target.append(name)
 
 
-def _extract_role_credit_authors(content_text):
+def _extract_photo_credit_authors(content_text):
+    """提取图片/图文署名，正确处理“图/文”被换行拆开的版式。"""
+    names = []
+    name_pattern = r"[\u4e00-\u9fff·]{2,4}?"
+    tail = r"(?=(?:[ \t]*(?:文|图|制图)[/:：])|[\r\n。；;]|$)"
+    pattern = re.compile(
+        rf"图[ \t\r\n]*/[ \t\r\n]*文[ \t\r\n]*[：:]?[ \t\r\n]*(?P<paired>{name_pattern}){tail}"
+        rf"|(?:图|文|制图)[ \t]*[/:：][ \t]*(?P<single>{name_pattern}){tail}",
+        re.MULTILINE,
+    )
+    for match in pattern.finditer(content_text):
+        raw = match.group("paired") or match.group("single")
+        if raw:
+            # 已有“图/文”等明确角色标记；即使姓氏暂未进入作者库，也不能把角色字“文”并入姓名。
+            _add_author_names(names, raw, strict=False)
+    return names
+
+
+def _extract_role_credit_authors(content_text, photo_credit_names=None):
     """提取正文中明确的策划/文/图等角色署名，返回按出现顺序的姓名。"""
     names = []
+    photo_credit_names = set(photo_credit_names or [])
     for start_match in _AUTHOR_CREDIT_START_RE.finditer(content_text):
         start = start_match.start(1)
         line_end = content_text.find("\n", start)
@@ -1043,13 +1107,26 @@ def _extract_role_credit_authors(content_text):
             end = markers[i + 1].start() if i + 1 < len(markers) else len(block)
             raw = block[marker.end():end]
             raw = re.split(r"[。；;]", raw, maxsplit=1)[0].strip(" \t、，,")
+            # “图/文姓名”中的“文”是署名角色标记；但“图/文伟”也可能是实名“文伟”。
+            if marker.group(1) == "图":
+                role_trimmed = re.sub(r"^文[：:]?\s*", "", raw)
+                matched_photo_name = next(
+                    (
+                        name for name in photo_credit_names
+                        if raw == name or raw == f"文{name}" or role_trimmed == name
+                    ),
+                    None,
+                )
+                raw = matched_photo_name or role_trimmed
             if raw:
-                _add_author_names(names, raw, strict=True)
+                _add_author_names(names, raw, strict=raw not in photo_credit_names)
     return names
 
 
 def extract_authors(data, content_text, final_title="", is_pic=False):
     """统一提取作者：合并 API、正文署名和漫评/图片角色署名。"""
+    is_cartoon = "漫评" in str(final_title) or bool(re.search(r"策划创作\s*[/:：]", content_text))
+    photo_credit_names = _extract_photo_credit_authors(content_text) if (is_pic or is_cartoon) else []
     primary = ""
     doc_author = data.get("docAuthor", "") or ""
     if doc_author:
@@ -1061,11 +1138,27 @@ def extract_authors(data, content_text, final_title="", is_pic=False):
         primary = re.sub(r"(?:实习|特约)?\s*(?:记者|通\s*讯\s*员)\s*", " ", primary).strip()
         primary = re.sub(r"(?:实习|特约)?(?:记者|通\s*讯\s*员|评论员)\s*$", "", primary).strip()
         primary = re.sub(r"^来源[：:][^，。]*?编译[：:]\s*", "", primary).strip()
+        primary = re.sub(r"^编译[：:]\s*", "", primary).strip()
+        # 图片署名常写作“图/文姓名”，也可能被排版拆成“图/\n文姓名”。
+        # 这里仅在正文存在对应图文署名时去掉角色前缀，避免误伤真实“文××”姓名。
+        if photo_credit_names:
+            role_aliases = {
+                f"文{name}": name for name in photo_credit_names
+            }
+            role_aliases.update({
+                f"图/文{name}": name for name in photo_credit_names
+            })
+            primary = re.sub(r"^文[：:]\s*", "", primary).strip()
+            primary = role_aliases.get(primary, primary)
         primary = re.sub(r"(?:报道|文|图)?\s*(?:受|连日来|近日|日前|随着|面对|今年|截至|目前|正值|汛期)\s*$", "", primary).strip()
-        primary = re.sub(r"(?:报道|文|图)\s*$", "", primary).strip()
+        # “文”既可能是图文角色，也可能是作者姓名末字（如“胡竞文”）。
+        # 只有去掉后仍命中已知作者时才按角色后缀剥离，避免截断实名。
+        role_trimmed = re.sub(r"(?:报道|文|图)\s*$", "", primary).strip()
+        if role_trimmed in KNOWN_AUTHORS or primary not in KNOWN_AUTHORS:
+            primary = role_trimmed
 
     names = []
-    role_names = _extract_role_credit_authors(content_text)
+    role_names = _extract_role_credit_authors(content_text, photo_credit_names)
     # 角色署名位于正文末尾，按版面署名顺序优先；再合并 API/正文记者名。
     _add_author_names(names, role_names)
     _add_author_names(names, primary)
@@ -1088,6 +1181,7 @@ def extract_authors(data, content_text, final_title="", is_pic=False):
         lead = re.sub(r"\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*", " ", lead).strip()
         lead = re.sub(r"(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者|评论员)\s*$", "", lead).strip()
         lead = re.sub(r"^来源[：:][^，。]*?编译[：:]\s*", "", lead).strip()
+        lead = re.sub(r"^编译[：:]\s*", "", lead).strip()
         if re.search(r"^(本报\s*)?(评论员|记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*$", lead):
             lead = ""
         lead = re.sub(
@@ -1108,14 +1202,9 @@ def extract_authors(data, content_text, final_title="", is_pic=False):
     _add_author_names(names, lead)
 
     # 漫评/图片新闻的图文署名可能不在正文首尾括号中；作为角色署名补充扫描。
-    is_cartoon = "漫评" in str(final_title) or bool(re.search(r"策划创作\s*[/:：]", content_text))
     if is_pic or is_cartoon:
-        photo_authors = re.findall(
-            r"(?:图|文|制图)[/:：]\s*([\u4e00-\u9fff·]{2,4}?)(?=(?:文|图|制图)[/:：]|\n|$)",
-            content_text,
-            re.MULTILINE,
-        )
-        _add_author_names(names, photo_authors, strict=True)
+        # 署名角色已由 _extract_photo_credit_authors 确认；未知姓氏也要保留，不让图文角色导致作者丢失。
+        _add_author_names(names, photo_credit_names, strict=False)
     if (is_cartoon or re.search(r"(?:图|文|制图)[/:：]", content_text)) and not role_names and not names:
         print("  ⚠ 检测到显式图文/策划署名但未提取到作者，需人工复核", file=sys.stderr)
 
@@ -1151,6 +1240,15 @@ def extract_authors(data, content_text, final_title="", is_pic=False):
             _add_author_names(names, first_line)
     if not names and re.search(r"^本报评论员", content_text[:30]) and not re.search(r"本报(记者|通\s*讯\s*员)", content_text[:30]):
         return ""
+    # 最后一道闸门：图/文角色拆行时，任何“文+真实姓名”别名都不得落入作者字段。
+    if photo_credit_names:
+        role_aliases = {f"文{name}": name for name in photo_credit_names}
+        normalized = []
+        for name in names:
+            name = role_aliases.get(name, name)
+            if name and name not in normalized:
+                normalized.append(name)
+        names = normalized
     return " ".join(names)
 
 
@@ -1217,6 +1315,9 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
         else:
             final_title = "图片新闻"
         is_pic = True
+    if is_pic:
+        # 统一「图片新闻：XXXX」占位；概括短语由当前 LLM 经 --apply-titles 补写。
+        final_title = pic_placeholder_title(final_title)
 
     # 作者处理：普通抓取与单篇重抓共用，显式角色署名会与 API/正文署名合并。
     author = extract_authors(data, content_text, final_title, is_pic)
@@ -1239,6 +1340,8 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
     fm.append("---")
     md = "\n".join(fm) + "\n\n" + content_text + "\n"
     fname = f"{order:02d}-{sanitize_filename(final_title)}.md"
+    if is_pic:
+        record_pic_title_pending(page_name, order, fname, content_text or final_title)
     page_dir = os.path.join(out_dir, page_name)
     os.makedirs(page_dir, exist_ok=True)
     with open(os.path.join(page_dir, fname), "w", encoding="utf-8") as f:
@@ -1248,6 +1351,7 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
 
 def fetch_single(guid, date_str):
     """按 GUID 单篇重抓：找版次→获取全文→process_article。"""
+    PIC_TITLE_PENDING.clear()
     out_dir = month_dir(date_str)
     os.makedirs(out_dir, exist_ok=True)
     date_dash = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
@@ -1274,11 +1378,13 @@ def fetch_single(guid, date_str):
             theme = page_info.get(bc, {"01":"要闻","02":"综合","03":"科技","04":"科普"}.get(bc, ""))
             fname, region = process_article(data, page_label(bc), i+1, date_str, out_dir, theme)
             print(f"  {page_label(bc)} {i+1:02d} 已重抓: {fname}")
+            write_pic_title_pending(date_str)
             return
     print(f"  错误: GUID={guid} 未在 {date_str} 任何版面找到"); sys.exit(1)
 
 def batch_fetch(date_str):
     """并行批量抓取：先获取各版列表去重，再并行拉取每篇稿件。"""
+    PIC_TITLE_PENDING.clear()
     out_dir = month_dir(date_str)
     os.makedirs(out_dir, exist_ok=True)
     date_dash = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
@@ -1346,8 +1452,10 @@ def batch_fetch(date_str):
         list(ex.map(fetch_one, unique))
     
     print(f"\n完成: {success} 篇文章 -> {out_dir}")
+    write_pic_title_pending(date_str)
 
 def main(date_str):
+    PIC_TITLE_PENDING.clear()
     out_dir = month_dir(date_str)
     os.makedirs(out_dir, exist_ok=True)
 
@@ -1479,15 +1587,8 @@ def main(date_str):
                     is_pic = True
 
             if is_pic:
-                # 命名环节直接生成「图片新闻：XXXX」（文本 LLM 概括图注，8-12 字）
-                summary = summarize_pic_title(content_text or pic_title)
-                if summary:
-                    final_title = f"图片新闻：{summary}"
-                elif pic_title.startswith("图片新闻"):
-                    final_title = pic_title
-                else:
-                    tail = re.sub(r'^\s*(?:[0-9]+月[0-9]+日，?|近日|日前|连日来|今年以来|今年|昨日|当天)\s*', '', pic_title)
-                    final_title = f"图片新闻：{tail[:15]}"
+                # 统一「图片新闻：XXXX」占位；概括短语由当前 LLM 经 --apply-titles 补写。
+                final_title = pic_placeholder_title(pic_title)
             else:
                 final_title = title
 
@@ -1604,6 +1705,8 @@ def main(date_str):
 
             md = "\n".join(fm) + "\n\n" + content_text + "\n"
             fname = f"{order:02d}-{sanitize_filename(final_title)}.md"
+            if is_pic:
+                record_pic_title_pending(page, order, fname, content_text or pic_title)
             fpath = os.path.join(page_dir, fname)
             with open(fpath, "w", encoding="utf-8") as f:
                 f.write(md)
@@ -1619,18 +1722,22 @@ def main(date_str):
     expected = len(all_guids)
     if total != expected:
         print(f"  ⚠ 应有 {expected} 篇，实际写入 {total} 篇（缺失 {expected - total} 篇）")
-    print("后续: 运行 vision_analyze 识别栏目/头条后修正")
+    write_pic_title_pending(date_str)
+    print("后续: 当前 LLM 概括图片新闻标题 → enrich_regions（地区）→ col_vision_run（栏目）")
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("用法: python3 fetch_epaper.py YYYYMMDD")
-        print("      python3 fetch_epaper.py --guid=XXXXX YYYYMMDD  # 单篇重抓")
+        print("      python3 fetch_epaper.py --guid=XXXXX YYYYMMDD        # 单篇重抓")
+        print("      python3 fetch_epaper.py --apply-titles YYYYMMDD     # 回写当前 LLM 概括的图片新闻标题")
         sys.exit(1)
     if sys.argv[1].startswith("--guid="):
         guid = sys.argv[1].split("=", 1)[1]
         date_str = sys.argv[2]
         fetch_single(guid, date_str)
+    elif sys.argv[1] == "--apply-titles":
+        apply_pic_titles(sys.argv[2])
     elif sys.argv[1] == "--batch":
         date_str = sys.argv[2]
         batch_fetch(date_str)

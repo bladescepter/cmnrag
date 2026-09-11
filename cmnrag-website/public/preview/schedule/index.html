@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>排班工具预览 · 采访中心</title>
+  <link rel="stylesheet" href="/site.css" />
+  <link rel="stylesheet" href="/schedule/assets/index-CA70F0lF.css" />
+</head>
+<body>
+  <div id="root">
+    <div id="auth-bar">
+      <div class="auth-bar-inner">
+        <div class="auth-left"><a class="auth-home" href="/preview.html" aria-label="预览首页"><span class="home-mark" aria-hidden="true">↖</span><span>主页</span></a></div>
+        <nav class="auth-nav" aria-label="主导航">
+          <div class="nav-menu">
+            <a class="auth-link nav-trigger" href="/preview/db/" aria-haspopup="true"><span>报纸资料库</span><span class="nav-caret" aria-hidden="true">⌄</span></a>
+            <div class="nav-dropdown" role="menu">
+              <a class="nav-dropdown-item" href="/preview/stats/" role="menuitem"><span><strong>各省发稿看板</strong><small>按地区查看发稿量</small></span><span class="nav-arrow" aria-hidden="true">↗</span></a>
+              <a class="nav-dropdown-item" href="/preview/column-dashboard/" role="menuitem"><span><strong>栏目运行看板</strong><small>栏目状态与趋势</small></span><em>预览</em></a>
+            </div>
+          </div>
+          <a class="auth-link active" href="/preview/schedule/">排班系统</a>
+        </nav>
+        <div class="auth-right"><span class="auth-name">界面预览</span></div>
+      </div>
+    </div>
+
+    <header class="app-header"><h1>排班工具</h1><span class="auth-name">静态界面预览</span></header>
+    <div class="app-body">
+      <div class="left-panel">
+        <div class="stats-bar"><span>2026 年排班表</span><span>预览范围：全年</span></div>
+        <p class="lock-hint">下方为排班表界面示意；实际人员、日期和操作仍由业务页面加载。</p>
+        <table class="schedule">
+          <thead><tr><th>日期</th><th>星期</th><th>一版</th><th>二版</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td>2026-01-01</td><td>周四</td><td>未加载</td><td>未加载</td><td>休刊日</td></tr>
+            <tr><td>2026-01-02</td><td>周五</td><td>未加载</td><td>未加载</td><td>待排班</td></tr>
+            <tr><td>2026-01-03</td><td>周六</td><td>未加载</td><td>未加载</td><td>待排班</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="right-panel">
+        <section class="generate-panel">
+          <button class="btn-generate" type="button">生成本周期排班</button>
+          <div class="gen-hint">请先在下方选择排班周期，再点击生成</div>
+          <div class="filter-tabs"><button class="filter-tab active" type="button">按周期</button><button class="filter-tab" type="button">按日期</button></div>
+          <div class="filter-section"><select class="cycle-select"><option>选择排班周期</option></select></div>
+          <div class="stats-bar"><span>已排：—</span><span>待排：—</span></div>
+          <button class="btn-clear" type="button">清除本周期</button>
+        </section>
+        <section class="settings-panel">
+          <h2>排班设置</h2>
+          <p class="gen-hint">人员、排除日期和规则设置将在此处集中管理。</p>
+          <div class="settings-save-bar"><button class="settings-save-button" type="button">保存设置</button></div>
+        </section>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
