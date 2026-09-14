@@ -209,8 +209,8 @@ def apply_columns_to_page(date_str, bc, results):
     updated = 0
     skipped = 0
     for result in results:
-        column = str(result.get("detected_column") or "").strip()
-        if not column:
+        columns = [str(c).strip() for c in (result.get("detected_columns") or []) if str(c).strip()]
+        if not columns:
             continue
         article, image_index = _match_local_article(
             str(result.get("title") or ""), articles, used, image_index
@@ -233,11 +233,11 @@ def apply_columns_to_page(date_str, bc, results):
             continue
         if items:
             # 审核前后均不覆盖已有栏目；差异交人工处理。
-            if items != [column]:
+            if items != columns:
                 print(f"  [保留] {os.path.basename(path)} 已有栏目，未覆盖")
             used.add(path)
             continue
-        new_text = _replace_list_field_text(text, "column", [column])
+        new_text = _replace_list_field_text(text, "column", columns)
         if new_text != text:
             with open(path, "w", encoding="utf-8", newline="") as f:
                 f.write(new_text)
@@ -340,23 +340,28 @@ def fuzzy_title_match(api_title, vision_titles):
 
 
 def match_columns(vision_data, api_articles):
-    """视觉结果 → API 文章的栏目归属"""
+    """视觉结果 → API 文章的栏目归属
+
+    一篇稿件可同时命中多个真实栏条（如策划版整版刊头「科普看台」+ 局部「微话题」），
+    按 vision.json 顺序全部保留；双栏目情况极少，但版面上两个栏条都可见时不得漏记。
+    """
     results = []
     for guid_title in api_articles:
         guid, title = guid_title
-        detected = ""
+        detected = []
         for col_data in vision_data:
             # 只接受带有当前版面栏目条证据、且严格命中 KNOWN_COLS 的记录。
             if not is_grounded_claim(col_data):
                 continue
             col = normalize_col(col_data.get("column"))
+            if col in detected:
+                continue
             if fuzzy_title_match(title, col_data["articles"]):
-                detected = col
-                break
+                detected.append(col)
         # 注：不做"整版只有一个栏目则全部归入"的兜底——
         # 局部栏目条（如某版只有一处"短讯速递"）会把无关文章误归入；
         # 整版统一栏目时 vision 的 articles 已含全部标题，fuzzy 匹配即可命中。
-        results.append({"guid": guid, "title": title, "detected_column": detected})
+        results.append({"guid": guid, "title": title, "detected_columns": detected})
     return results
 
 
@@ -378,8 +383,8 @@ def evaluate(date_str, bc, results):
     print(f"{'='*70}")
     for i, r in enumerate(results):
         order = f"{i+1:02d}"
-        det_col = r["detected_column"]
-        print(f"  {order} {r['title'][:28]:30s} 栏目={det_col[:20] or '(空)'}")
+        det_col = "、".join(r.get("detected_columns") or [])
+        print(f"  {order} {r['title'][:28]:30s} 栏目={det_col[:40] or '(空)'}")
 
 
 def main():
