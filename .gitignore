@@ -28,3 +28,9 @@ Thumbs.db
 
 # 本地报告与导出
 reports/
+
+# 本地助手、视觉审计与预览运行产物
+.claude/
+**/.hallmark/
+.local-preview.log
+_ul

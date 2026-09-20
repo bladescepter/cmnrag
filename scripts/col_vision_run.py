@@ -20,7 +20,7 @@ vision.json 格式（栏标是唯一证据，栏目名必须逐字命中 KNOWN_C
   [{"column": "库内标准栏目名", "bar_visible": true, "bar_text": "图中栏目条原文",
     "articles": ["标题原文1", "标题原文2"]}]
 
-识别完成后运行 python scripts/column_detect.py YYYYMMDD 匹配并写入 column。
+识别完成后运行 python scripts/column_detect.py YYYYMMDD 匹配并写入 column；流程通过最终校验后会自动删除上述临时图片，仅保留 JSON 结果。
 历史栏目"存在过"不能证明本期存在；条带扫描没看到也不等于不存在。
 """
 import os, json, sys
