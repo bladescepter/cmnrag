@@ -11,9 +11,8 @@ node_modules/
 dist/
 coverage/
 
-# 智能体配置（AGENTS.md + .pi/ 技能与运行时文件，不入库）
-AGENTS.md
-.pi/
+# 智能体上下文与 Pi 项目配置纳入 Git；仅忽略运行时状态
+.pi/hindsight/
 
 # Python 缓存
 __pycache__/
