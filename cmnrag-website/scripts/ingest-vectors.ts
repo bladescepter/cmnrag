@@ -1,20 +1,30 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { chunkArticle } from "../src/ingest/chunkArticle";
-import { buildEmbeddingText, discoverMonthFiles } from "../src/ingest/julyArchive";
+import { buildEmbeddingText, discoverDateFiles, discoverMonthFiles } from "../src/ingest/julyArchive";
 import { vectorIdForChunk } from "../src/ingest/vectorId";
 import { parseArticle } from "../src/archive/parseArticle";
 
 // 默认指向仓库内数据根目录（<项目根>/cmnrag），可用第一个参数覆盖；
 // 以脚本位置为锚，不依赖运行时 cwd。
 const sourceRoot = process.argv[2] ?? join(__dirname, "..", "..", "cmnrag");
+// Scope must be explicit: CMNRAG_DATES limits the run to exact YYYYMMDD directories;
+// CMNRAG_MONTHS remains available for deliberate month-level batch operations.
+const parseScope = (value: string | undefined) => new Set((value ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+const dateSet = parseScope(process.env.CMNRAG_DATES);
+const monthSet = parseScope(process.env.CMNRAG_MONTHS);
+if (dateSet.size && monthSet.size) throw new Error("CMNRAG_DATES and CMNRAG_MONTHS are mutually exclusive");
+for (const date of dateSet) if (!/^\d{8}$/.test(date)) throw new Error(`invalid CMNRAG_DATES value: ${date}`);
+for (const month of monthSet) if (!/^\d{6}$/.test(month)) throw new Error(`invalid CMNRAG_MONTHS value: ${month}`);
+if (!dateSet.size && !monthSet.size) throw new Error("set CMNRAG_DATES=YYYYMMDD or CMNRAG_MONTHS=YYYYMM before ingesting vectors");
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "6af7ecfe8e736f150bae5089463f9293";
 const token = process.env.CLOUDFLARE_RAG_API_TOKEN;
 const databaseId = "f0fbe6ce-5e87-4885-9ab6-7e948ec13c4d";
 const indexName = "zgqxb-bge-m3";
 const EMBEDDING_MODEL = "@cf/baai/bge-m3";
 const BATCH_SIZE = 20;
+const SQL_BATCH_SIZE = 50;
 if (!token) throw new Error("CLOUDFLARE_RAG_API_TOKEN is required");
 
 type ArticleRow = ReturnType<typeof parseArticle>;
@@ -60,6 +70,17 @@ async function query(sql: string, params: unknown[]): Promise<Array<Record<strin
 	return (data.result as Array<{ results: Array<Record<string, unknown>> }> | undefined)?.[0]?.results ?? [];
 }
 
+async function loadExistingChunkHashes(articleIds: string[]): Promise<Map<string, string>> {
+	const existing = new Map<string, string>();
+	for (let offset = 0; offset < articleIds.length; offset += SQL_BATCH_SIZE) {
+		const ids = articleIds.slice(offset, offset + SQL_BATCH_SIZE);
+		const placeholders = ids.map(() => "?").join(",");
+		const rows = await query(`SELECT article_id, source_sha256 FROM chunks WHERE article_id IN (${placeholders})`, ids);
+		for (const row of rows) existing.set(String(row.article_id), String(row.source_sha256));
+	}
+	return existing;
+}
+
 async function embed(texts: string[]): Promise<number[][]> {
 	const data = await cloudflare(`/ai/run/${EMBEDDING_MODEL}`, {
 		method: "POST",
@@ -99,28 +120,26 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(source_path) DO UPDATE SET article_id=excluded.article_id, source_sha256=excluded.source_sha256, type=excluded.type, source=excluded.source, title=excluded.title, subtitle=excluded.subtitle, author=excluded.author, published_date=excluded.published_date, page=excluded.page, theme=excluded.theme, edition_type=excluded.edition_type, headline=excluded.headline, image=excluded.image, column_name=excluded.column_name, region=excluded.region, content=excluded.content, imported_at=CURRENT_TIMESTAMP`, [article.articleId, article.sourcePath, article.sourceSha256, article.type, article.source, article.title, article.subtitle, JSON.stringify(article.author), article.date, article.page, article.theme, article.editionType, article.headline ? 1 : 0, article.image ? 1 : 0, JSON.stringify(article.columnName), JSON.stringify(article.region), article.content]);
 }
 
-// 6 月资料已完成审核，和其他月份一样属于正式数据；默认发现全部 YYYYMM 目录。
-async function discoverAllMonths(root: string): Promise<string[]> {
-	const entries = await readdir(root, { withFileTypes: true });
-	return entries.filter((entry) => entry.isDirectory() && /^\d{6}$/.test(entry.name)).map((entry) => entry.name).sort();
-}
-
 async function main() {
-	// 月份列表：CMNRAG_MONTHS=202606,202607 限定；留空则自动发现数据根下全部 YYYYMM 月份目录（避免漏月）
-	const months = process.env.CMNRAG_MONTHS
-		? process.env.CMNRAG_MONTHS.split(",").map((s) => s.trim()).filter(Boolean)
-		: await discoverAllMonths(sourceRoot);
-	if (!months.length) throw new Error("no month directories found under " + sourceRoot);
-	const files = await discoverMonthFiles(sourceRoot, months);
+	let files: string[];
+	let scopeLabel: string;
+	if (dateSet.size) {
+		const dates = [...dateSet].sort();
+		files = await discoverDateFiles(sourceRoot, dates);
+		scopeLabel = `dates:${dates.join(",")}`;
+	} else {
+		const months = [...monthSet].sort();
+		files = await discoverMonthFiles(sourceRoot, months);
+		scopeLabel = `months:${months.join(",")}`;
+	}
+	if (!files.length) throw new Error(`no archive files found for ${scopeLabel} under ${sourceRoot}`);
 	const articles = await Promise.all(files.map(async (file) => parseArticle(await readFile(file, "utf8"), relative(sourceRoot, file).split(sep).join("/"))));
 	const runId = randomUUID();
-	await execute("INSERT INTO ingest_runs(run_id, started_at, source_root, article_total) VALUES (?, datetime('now'), ?, ?)", [runId, `${sourceRoot}/${months.join(",")}`, articles.length]);
-	// 增量：以 chunks 表嵌入时的 source_sha256 为判据（不能用 articles 表——import 脚本会
-	// 先把它更新为新值，导致内容变了向量却永不重刷）。本地 sha 与已嵌入 sha 不一致或
-	// 无嵌入记录的文章整体重刷其分块。
-	const existing = new Map(
-		(await query("SELECT article_id, source_sha256 FROM chunks", [])).map((row) => [String(row.article_id), String(row.source_sha256)]),
-	);
+	const runSource = `${sourceRoot} [${scopeLabel}]`;
+	await execute("INSERT INTO ingest_runs(run_id, started_at, source_root, article_total) VALUES (?, datetime('now'), ?, ?)", [runId, runSource, articles.length]);
+	// 增量：只查询本次明确 scope 内文章的嵌入 source_sha256；不能用 articles 表——import
+	// 脚本会先把它更新为新值，导致内容变了向量却永不重刷。
+	const existing = await loadExistingChunkHashes(articles.map((article) => article.articleId));
 	const toRefresh = articles.filter((article) => article.content.length > 0 && existing.get(article.articleId) !== article.sourceSha256);
 	const skipped = articles.length - toRefresh.length;
 	const chunks = toRefresh.flatMap((article) => chunkArticle(article.content).map((content, chunkIndex, all) => ({
@@ -147,7 +166,7 @@ ON CONFLICT(chunk_id) DO UPDATE SET vector_id=excluded.vector_id, article_id=exc
 		console.log(`embedded ${Math.min(offset + batch.length, chunks.length)}/${chunks.length}`);
 	}
 	await execute("UPDATE ingest_runs SET completed_at=datetime('now'), inserted_count=?, failed_count=0 WHERE run_id=?", [toRefresh.length, runId]);
-	console.log(JSON.stringify({ runId, articles: toRefresh.length, skipped, chunks: chunks.length, sourceRoot: `${sourceRoot}/${months.join(",")}` }));
+	console.log(JSON.stringify({ runId, scope: scopeLabel, articles: toRefresh.length, skipped, chunks: chunks.length, sourceRoot }));
 }
 
 main().catch(async (error) => {

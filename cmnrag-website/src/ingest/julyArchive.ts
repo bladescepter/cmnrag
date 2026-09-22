@@ -11,23 +11,32 @@ export type EmbeddingMetadata = {
 	region: string[];
 };
 
+async function walkMarkdownFiles(directory: string): Promise<string[]> {
+	const entries = await readdir(directory, { withFileTypes: true });
+	const nested = await Promise.all(entries.map((entry) => {
+		const path = join(directory, entry.name);
+		if (entry.isDirectory()) return walkMarkdownFiles(path);
+		return entry.isFile() && entry.name.endsWith(".md") ? [path] : [];
+	}));
+	return nested.flat();
+}
+
 export async function discoverMonthFiles(root: string, months: string[]): Promise<string[]> {
-	async function walk(directory: string): Promise<string[]> {
-		const entries = await readdir(directory, { withFileTypes: true });
-		const nested = await Promise.all(entries.map((entry) => {
-			const path = join(directory, entry.name);
-			if (entry.isDirectory()) return walk(path);
-			return entry.isFile() && entry.name.endsWith(".md") ? [path] : [];
-		}));
-		return nested.flat();
-	}
 	const results: string[] = [];
 	for (const month of months) {
 		try {
-			results.push(...(await walk(join(root, month))));
+			results.push(...(await walkMarkdownFiles(join(root, month))));
 		} catch {
 			// 月份目录不存在则跳过
 		}
+	}
+	return results.sort();
+}
+
+export async function discoverDateFiles(root: string, dates: string[]): Promise<string[]> {
+	const results: string[] = [];
+	for (const date of dates) {
+		results.push(...(await walkMarkdownFiles(join(root, date.slice(0, 6), date))));
 	}
 	return results.sort();
 }

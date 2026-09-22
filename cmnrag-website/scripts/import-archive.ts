@@ -6,9 +6,15 @@ import { parseArticle } from "../src/archive/parseArticle";
 // 默认指向仓库内数据根目录（<项目根>/cmnrag），可用第一个参数覆盖；
 // 以脚本位置为锚，不依赖运行时 cwd。
 const sourceRoot = process.argv[2] ?? join(__dirname, "..", "..", "cmnrag");
-// 月份过滤：CMNRAG_MONTHS=202606,202607 时只导这些月份；留空则全量发现 YYYYMM 目录。
-// 6 月资料已完成审核，和其他月份一样属于正式数据，不再作为测试月份排除。
-const monthSet = new Set((process.env.CMNRAG_MONTHS ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+// Scope must be explicit: CMNRAG_DATES limits the run to exact YYYYMMDD directories;
+// CMNRAG_MONTHS remains available for deliberate month-level batch operations.
+const parseScope = (value: string | undefined) => new Set((value ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+const dateSet = parseScope(process.env.CMNRAG_DATES);
+const monthSet = parseScope(process.env.CMNRAG_MONTHS);
+if (dateSet.size && monthSet.size) throw new Error("CMNRAG_DATES and CMNRAG_MONTHS are mutually exclusive");
+for (const date of dateSet) if (!/^\d{8}$/.test(date)) throw new Error(`invalid CMNRAG_DATES value: ${date}`);
+for (const month of monthSet) if (!/^\d{6}$/.test(month)) throw new Error(`invalid CMNRAG_MONTHS value: ${month}`);
+if (!dateSet.size && !monthSet.size) throw new Error("set CMNRAG_DATES=YYYYMMDD or CMNRAG_MONTHS=YYYYMM before importing");
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "6af7ecfe8e736f150bae5089463f9293";
 const token = process.env.CLOUDFLARE_RAG_API_TOKEN;
 const databaseId = "f0fbe6ce-5e87-4885-9ab6-7e948ec13c4d";
@@ -35,6 +41,16 @@ async function walk(directory: string, selectedMonths: Set<string>, depth = 0): 
 			return walk(path, selectedMonths, depth + 1);
 		}
 		return entry.name.endsWith(".md") && /^2026\d{4}$/.test(directory.split(/[\\/]/).at(-2) ?? "") ? [path] : [];
+	}));
+	return nested.flat();
+}
+
+async function walkDateFiles(directory: string): Promise<string[]> {
+	const entries = await readdir(directory, { withFileTypes: true });
+	const nested = await Promise.all(entries.map((entry) => {
+		const path = join(directory, entry.name);
+		if (entry.isDirectory()) return walkDateFiles(path);
+		return entry.isFile() && entry.name.endsWith(".md") ? [path] : [];
 	}));
 	return nested.flat();
 }
@@ -67,6 +83,19 @@ type ExistingArticle = {
 	sourceSha256: string;
 	articleId: string;
 };
+
+async function loadExistingRows(scopePrefixes: string[]): Promise<ExistingArticle[]> {
+	const conditions = scopePrefixes.map(() => "source_path LIKE ?").join(" OR ");
+	const rows = await query(
+		`SELECT source_path, source_sha256, article_id FROM articles WHERE ${conditions}`,
+		scopePrefixes.map((prefix) => `${prefix}/%`),
+	);
+	return rows.map((row): ExistingArticle => ({
+		sourcePath: String(row.source_path),
+		sourceSha256: String(row.source_sha256),
+		articleId: String(row.article_id),
+	}));
+}
 
 async function deleteVectors(vectorIds: string[]) {
 	for (let offset = 0; offset < vectorIds.length; offset += VECTOR_BATCH_SIZE) {
@@ -105,14 +134,26 @@ async function reconcileStaleArticles(rows: ExistingArticle[]): Promise<number> 
 }
 
 async function main() {
-	const availableMonths = await discoverMonths(sourceRoot);
-	const selectedMonths = monthSet.size > 0
-		? availableMonths.filter((month) => monthSet.has(month))
-		: availableMonths;
-	if (!selectedMonths.length) throw new Error("no selected YYYYMM month directories found under " + sourceRoot);
-	const files = await walk(sourceRoot, new Set(selectedMonths));
-	// Parse the complete archive before the first remote write. A frontmatter failure
-	// therefore never produces a partly ingested corpus.
+	let files: string[];
+	let scopeLabel: string;
+	let scopePrefixes: string[];
+	if (dateSet.size) {
+		const dates = [...dateSet].sort();
+		files = (await Promise.all(dates.map((date) => walkDateFiles(join(sourceRoot, date.slice(0, 6), date))))).flat().sort();
+		scopePrefixes = dates.map((date) => `${date.slice(0, 6)}/${date}`);
+		scopeLabel = `dates:${dates.join(",")}`;
+	} else {
+		const availableMonths = await discoverMonths(sourceRoot);
+		const selectedMonths = [...monthSet].sort();
+		const missingMonths = selectedMonths.filter((month) => !availableMonths.includes(month));
+		if (missingMonths.length) throw new Error("no selected YYYYMM month directories found under " + sourceRoot + ": " + missingMonths.join(","));
+		files = await walk(sourceRoot, new Set(selectedMonths));
+		scopePrefixes = selectedMonths;
+		scopeLabel = `months:${selectedMonths.join(",")}`;
+	}
+	if (!files.length) throw new Error(`no archive files found for ${scopeLabel} under ${sourceRoot}`);
+	// Parse the complete requested scope before the first remote write. A frontmatter
+	// failure therefore never produces a partly ingested corpus.
 	const articles = await Promise.all(files.map(async (file) => {
 		const raw = await readFile(file, "utf8");
 		// 统一正斜杠 source_path：article_id 由 source_path 派生，且 D1 按 source_path 去重；
@@ -123,20 +164,15 @@ async function main() {
 	const metadataOnlyCount = articles.length - searchableArticles.length;
 	// 增量导入：以 source_path -> source_sha256 为判据，内容未变的文件零写入跳过。
 	// 首次运行（线上无记录）时全部视为新增，行为等同于全量导入。
-	const existingRows = (await query("SELECT source_path, source_sha256, article_id FROM articles", [])).map((row): ExistingArticle => ({
-		sourcePath: String(row.source_path),
-		sourceSha256: String(row.source_sha256),
-		articleId: String(row.article_id),
-	}));
+	const existingRows = await loadExistingRows(scopePrefixes);
 	const existing = new Map(existingRows.map((row) => [row.sourcePath, row.sourceSha256]));
 	const localPaths = new Set(articles.map((article) => article.sourcePath));
-	const selectedMonthSet = new Set(selectedMonths);
-	const staleRows = existingRows.filter((row) => {
-		const month = row.sourcePath.split("/", 1)[0];
-		return selectedMonthSet.has(month) && !localPaths.has(row.sourcePath);
-	});
+	// existingRows is already restricted to the requested dates/months, so stale
+	// reconciliation cannot delete articles outside the explicit import scope.
+	const staleRows = existingRows.filter((row) => !localPaths.has(row.sourcePath));
 	const runId = randomUUID();
-	await execute("INSERT INTO ingest_runs(run_id, started_at, source_root, article_total) VALUES (?, datetime('now'), ?, ?)", [runId, sourceRoot, articles.length]);
+	const runSource = `${sourceRoot} [${scopeLabel}]`;
+	await execute("INSERT INTO ingest_runs(run_id, started_at, source_root, article_total) VALUES (?, datetime('now'), ?, ?)", [runId, runSource, articles.length]);
 	const deleted = await reconcileStaleArticles(staleRows);
 	let inserted = 0;
 	let changed = 0;
@@ -155,7 +191,7 @@ async function main() {
 		if (remoteSha !== undefined) changed++;
 	}
 	await execute("UPDATE ingest_runs SET completed_at=datetime('now'), inserted_count=?, failed_count=0 WHERE run_id=?", [inserted, runId]);
-	console.log(JSON.stringify({ runId, sourceRoot, articles: inserted, changed, skipped, deleted, searchableArticles: searchableArticles.length, metadataOnlyArticles: metadataOnlyCount }));
+	console.log(JSON.stringify({ runId, sourceRoot, scope: scopeLabel, articles: inserted, changed, skipped, deleted, searchableArticles: searchableArticles.length, metadataOnlyArticles: metadataOnlyCount }));
 }
 
 main().catch((error) => {

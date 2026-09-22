@@ -202,12 +202,14 @@ cd cmnrag-website
 
 ### 3. 远程导入和向量更新
 
-从 `cmnrag-website/` 执行，**限定本次月份**，不要无故扫描全库：
+从 `cmnrag-website/` 执行，**限定本次日期**，不要扫描整月或全库：
 
 ```bash
-CMNRAG_MONTHS=YYYYMM npx tsx scripts/import-archive.ts && \
-CMNRAG_MONTHS=YYYYMM npx tsx scripts/ingest-vectors.ts
+CMNRAG_DATES=YYYYMMDD npx tsx scripts/import-archive.ts && \
+CMNRAG_DATES=YYYYMMDD npx tsx scripts/ingest-vectors.ts
 ```
+
+`CMNRAG_MONTHS=YYYYMM` 仅用于明确要求的整月批处理；未提供日期或月份范围时脚本直接拒绝运行。
 
 先确认导入脚本输出 JSON（`articles`/`changed`/`skipped`，无 error），再确认向量脚本完成（`chunks` 和最终 JSON）。第一步失败时不得运行第二步。两者都成功后，D1 元数据与 Vectorize 数据已经在线生效。
 
