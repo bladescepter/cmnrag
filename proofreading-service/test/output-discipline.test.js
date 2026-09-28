@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { applyVerdicts } from '../src/verification.js';
 import { locate } from '../src/pi-runner.js';
-import { locateOpinionMarks, OPINION_LINE } from '../../cmnrag-website/public/proofreading/display-marks.js';
+import { locateOpinionMarks, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase } from '../../cmnrag-website/public/proofreading/display-marks.js';
 
 const source = { url: 'https://authority.example/news', title: '权威原文', snippet: '正式名称：正确机构名称。' };
 test('fact judgments publish only proven, anchored errors; correct and uncertain facts stay internal', () => {
@@ -139,4 +139,46 @@ test('native pi answers render verbatim as text without executing HTML or droppi
   runInNewContext('renderTask(task);', context);
   assert.equal(marks().length, 0); // Poll refresh clears stale marks.
   assert.equal(findings.children.map(c => c.text()).join(''), '无意见');
+});
+
+test('running progress shows four abstract phases, a spinner and elapsed time without detailed stages', () => {
+  class Element {
+    children = []; textContent = ''; classList = { add() {}, remove() {}, toggle() {} };
+    append(...items) { this.children.push(...items); }
+    replaceChildren() { this.children = []; this.textContent = ''; }
+    addEventListener() {} setAttribute() {}
+    text() { return this.textContent + this.children.map(c => c.text()).join(''); }
+  }
+  const elements = new Map();
+  const document = {
+    getElementById(id) { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); },
+    createElement() { return new Element(); },
+    createTextNode(text) { const el = new Element(); el.textContent = text; return el; },
+  };
+  const script = readFileSync(new URL('../../cmnrag-website/public/proofreading/workbench.js', import.meta.url), 'utf8')
+    .replace(/^import .*;\n/gm, '').split('async function refreshTask(id)')[0];
+  const start = new Date(Date.now() - 70_000).toISOString();
+  const context = { document, URL, requestJson: () => {}, verifyAnchor: () => null,
+    locateOpinionMarks, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase,
+    task: { status: 'running', title: '测试', model: '测试模型', content: '标题', created_at: start,
+      stages: [{ name: 'Pi 已载入原版校对技能', status: 'done' }], issues: [] } };
+  runInNewContext(script + '\nrenderTask(task);', context);
+  const progress = elements.get('task-progress');
+  const steps = progress.children[0].children;
+  assert.deepEqual(steps.map(step => step.className), ['phase active', 'phase', 'phase', 'phase']);
+  assert.ok(steps[0].children.some(el => el.className === 'phase-spinner'));
+  assert.ok(!progress.text().includes('Pi 已载入原版校对技能'));
+  assert.match(elements.get('task-elapsed').textContent, /^已持续 1 分/);
+  assert.equal(elements.get('task-elapsed').hidden, false);
+  context.task = { ...context.task, stages: [{ name: 'Pi 调用 TinyFish Search', status: 'done' }] };
+  runInNewContext('renderTask(task);', context);
+  assert.deepEqual(progress.children[0].children.map(step => step.className), ['phase done', 'phase done', 'phase active', 'phase']);
+  context.task = { ...context.task, status: 'completed', updated_at: new Date(Date.parse(start) + 90_000).toISOString() };
+  runInNewContext('renderTask(task);', context);
+  assert.equal(progress.children.length, 0);
+  assert.match(elements.get('task-elapsed').textContent, /^任务总用时 1 分 30 秒/);
+  context.task = { ...context.task, status: 'queued' };
+  runInNewContext('renderTask(task);', context);
+  assert.equal(progress.children.length, 0); // 排队不是“读取资料中”。
+  assert.match(elements.get('task-elapsed').textContent, /^已等待/);
 });

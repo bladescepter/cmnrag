@@ -144,6 +144,8 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
     const done = await waitFor(path => app.request(path), first.id, 'completed');
     assert.equal(done.result_format, 'pi-final-text-v1');
     assert.equal(done.result_text, finalText); // 逐字保存，含换行
+    assert.ok(Number.isFinite(Date.parse(done.created_at)));
+    assert.ok(Date.parse(done.updated_at) >= Date.parse(done.created_at)); // 前端据此显示已持续/用时
     assert.deepEqual(done.usage, { calls: 7, totalTokens: 40700, estimatedUsd: 0.06, available: true });
     assert.deepEqual(done.issues, []); // 新执行器不生成结构化列表
     assert.equal((await app.request(`/tasks/${first.id}`, 2)).status, 404); // 跨用户仍隔离

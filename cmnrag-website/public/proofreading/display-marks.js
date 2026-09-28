@@ -68,3 +68,28 @@ export function locateOpinionMarks(original, answer) {
   }
   return opinions;
 }
+
+// 四阶段进度展示：后台阶段名只作映射用，不再逐条展示（用户指定：读取资料中、通读稿件中、事实核查中、生成结果中）。
+export const PROOFREADING_PHASES = ["读取资料中", "通读稿件中", "事实核查中", "生成结果中"];
+const STAGE_PHASE = [
+  [/载入原版校对技能/, 1],
+  [/读取技能参考文件/, 1],
+  [/写入本任务草稿|执行关键词扫描/, 2],
+  [/调用 TinyFish Search/, 3],
+  [/会话已结束/, 4],
+];
+
+// 当前阶段 = 已完成后台阶段所属阶段的最新值；未知阶段名不影响进度。
+export function currentProofreadingPhase(stages) {
+  let phase = 1;
+  if (Array.isArray(stages)) {
+    for (const stage of stages) {
+      const name = typeof stage?.name === "string" ? stage.name : "";
+      if (stage?.status !== "done") continue;
+      for (const [pattern, index] of STAGE_PHASE) {
+        if (pattern.test(name)) { phase = Math.max(phase, index); break; }
+      }
+    }
+  }
+  return phase;
+}

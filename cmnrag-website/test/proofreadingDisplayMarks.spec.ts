@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { locateOpinionMarks, OPINION_LINE } from "../public/proofreading/display-marks.js";
+import { locateOpinionMarks, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase } from "../public/proofreading/display-marks.js";
 
 describe("completed proofreading display marks (never a verdict filter)", () => {
   it("numbers opinion lines and marks unique quotes in the skill's instructed format", () => {
@@ -61,5 +61,23 @@ describe("completed proofreading display marks (never a verdict filter)", () => 
     const original = "🌤标题\n气象X金融";
     const [opinion] = locateOpinionMarks(original, "【文法】第2段：“气象X金融”；应改为“气象×金融”。");
     expect(opinion.spans).toEqual([{ start: original.indexOf("气象X金融"), end: original.length }]);
+  });
+});
+
+describe("four-phase progress display", () => {
+  it("maps backend stage names onto the four display phases", () => {
+    expect(PROOFREADING_PHASES).toEqual(["读取资料中", "通读稿件中", "事实核查中", "生成结果中"]);
+    const done = names => names.map(name => ({ name, status: "done" }));
+    expect(currentProofreadingPhase(done(["Pi 已载入原版校对技能"]))).toBe(1);
+    expect(currentProofreadingPhase(done(["Pi 已载入原版校对技能", "Pi 读取技能参考文件"]))).toBe(1);
+    expect(currentProofreadingPhase(done(["Pi 读取技能参考文件", "Pi 写入本任务草稿", "Pi 执行关键词扫描"]))).toBe(2);
+    expect(currentProofreadingPhase(done(["Pi 执行关键词扫描", "Pi 调用 TinyFish Search"]))).toBe(3);
+    expect(currentProofreadingPhase(done(["Pi 调用 TinyFish Search", "Pi 会话已结束"]))).toBe(4);
+  });
+  it("starts at phase one and ignores unknown or unfinished stages", () => {
+    expect(currentProofreadingPhase([])).toBe(1);
+    expect(currentProofreadingPhase(undefined)).toBe(1);
+    expect(currentProofreadingPhase([{ name: "Pi 调用 TinyFish Search", status: "running" }])).toBe(1);
+    expect(currentProofreadingPhase([{ name: "未知阶段名", status: "done" }])).toBe(1);
   });
 });

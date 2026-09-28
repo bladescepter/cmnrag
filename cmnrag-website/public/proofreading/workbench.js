@@ -1,6 +1,6 @@
 /* The workbench renders only server state: no synthetic progress or sample findings. */
 import { verifyAnchor } from "./anchors.js";
-import { locateOpinionMarks, OPINION_LINE } from "./display-marks.js";
+import { locateOpinionMarks, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase } from "./display-marks.js";
 import { requestJson } from "./request.js";
 const $ = (id) => document.getElementById(id);
 const api = requestJson;
@@ -198,6 +198,20 @@ function renderReview(task) {
   if (!issues.length) findings.append(node("p", "empty-note", task.status === "completed" ? "无意见" : task.status === "partial" ? "部分核查未完成，不能认定全文无错。" : "校对中，尚无结果。"));
   // 校对技能输出纪律：只呈现明确错误；搜索材料、正确项、待核实事项均为内部过程。
 }
+function formatDuration(startIso, endIso) {
+  const start = Date.parse(startIso);
+  const end = Date.parse(endIso);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+  return formatSeconds(Math.floor((end - start) / 1000));
+}
+function formatSeconds(totalSeconds) {
+  const seconds = totalSeconds % 60;
+  const minutes = Math.floor(totalSeconds / 60) % 60;
+  const hours = Math.floor(totalSeconds / 3600);
+  if (hours > 0) return `${hours} 小时 ${minutes} 分`;
+  if (minutes > 0) return `${minutes} 分 ${String(seconds).padStart(2, "0")} 秒`;
+  return `${seconds} 秒`;
+}
 function renderTask(task) {
   currentTask = task;
   $("task-title").textContent = safeText(task.title) || "未命名稿件";
@@ -205,9 +219,34 @@ function renderTask(task) {
   $("task-status").textContent = labels[task.status] || "状态未知";
   const progress = $("task-progress");
   progress.replaceChildren();
-  if (activeStates.has(task.status) && Array.isArray(task.stages)) for (const stage of task.stages) {
-    if (typeof stage?.name === "string") progress.append(node("span", stage.status === "done" ? "stage done" : "stage", `${stage.status === "done" ? "✓ " : "· "}${stage.name}`));
+  if (task.status === "running") {
+    // 四阶段步进器：当前阶段带旋转指示动画；后台阶段名不逐条展示。
+    const current = currentProofreadingPhase(task.stages);
+    const stepper = node("div", "phase-stepper");
+    PROOFREADING_PHASES.forEach((label, index) => {
+      const phase = index + 1;
+      const step = node("span", phase < current ? "phase done" : phase === current ? "phase active" : "phase");
+      if (phase === current) {
+        const spinner = node("span", "phase-spinner");
+        spinner.setAttribute("aria-hidden", "true");
+        step.append(spinner);
+      } else if (index < current) {
+        step.append(document.createTextNode("✓ "));
+      }
+      step.append(document.createTextNode(label));
+      stepper.append(step);
+    });
+    progress.append(stepper);
   }
+  // 计时独立于 aria-live 的阶段区，避免每秒播报一次。
+  const elapsed = $("task-elapsed");
+  const duration = activeStates.has(task.status)
+    ? formatDuration(task.created_at, new Date().toISOString())
+    : (task.status === "completed" || task.status === "partial")
+      ? formatDuration(task.created_at, task.updated_at)
+      : null;
+  elapsed.hidden = duration === null;
+  elapsed.textContent = duration === null ? "" : `${task.status === "queued" ? "已等待" : task.status === "running" ? "已持续" : "任务总用时"} ${duration}`;
   if (task.status === "partial") progress.append(node("p", "task-note", task.result_format === "pi-final-text-v1" ? "技能执行未全部完成；以下保留 Pi 最终回答，不代表校对通过。" : "校对尚未全部完成，当前仅列已确认错误。"));
   if (task.status === "failed" || task.status === "cancelled") progress.append(node("p", "task-note", "任务未完成，不能视为无意见。"));
   renderReview(task);
@@ -235,6 +274,7 @@ function openTask(id, push = true) {
   setView("task");
   $("task-title").textContent = "正在读取稿件…";
   $("task-progress").replaceChildren();
+  $("task-elapsed").hidden = true;
   $("source-text").replaceChildren();
   $("source-mark-count").textContent = "只读 · 不自动改写";
   $("findings").replaceChildren();
@@ -293,6 +333,13 @@ setInterval(() => {
     refreshList().catch(() => {});
   }
 }, 3000);
+// 已持续时长每秒本地刷新，不产生网络请求。
+setInterval(() => {
+  if (!currentTask || !activeStates.has(currentTask.status) || !currentTask.created_at) return;
+  const elapsed = $("task-elapsed");
+  const text = formatDuration(currentTask.created_at, new Date().toISOString());
+  if (text && !elapsed.hidden) elapsed.textContent = `${currentTask.status === "queued" ? "已等待" : "已持续"} ${text}`;
+}, 1000);
 (async function init() {
   try {
     let auth;

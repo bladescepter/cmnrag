@@ -24,6 +24,7 @@
     "id": "UUID", "title": "…", "status": "queued|running|completed|partial|failed|cancelled",
     "version_id": "…", "rule_version": "技能包 SHA-256", "model": "提供商/模型",
     "content": "原文",
+    "created_at": "ISO-8601", "updated_at": "ISO-8601",
     "result_format": "pi-final-text-v1",
     "result_text": "Pi 最终回答原文（逐字，含换行；completed/partial 时存在）",
     "usage": { "calls": 7, "totalTokens": 40700, "estimatedUsd": 0.06, "available": true },
@@ -32,7 +33,7 @@
   }
   ```
 
-  所有阶段只从实际执行事件生成。非本人任务返回 404，不在响应中泄露归属。
+  `created_at` / `updated_at` 为任务时间戳，前端据此显示已持续时长与完成用时；网页仅将实际执行阶段归并为四个展示阶段，不展示底层工具事件。非本人任务返回 404，不在响应中泄露归属。
 
   - `result_text` 不经任何过滤、合并或锚点验证，网页以 `textContent` + `pre-wrap` 原样展示。仅在 `completed` 后，前端从符合技能格式的错误行提取片段，为能在原稿中唯一逐字定位的片段加展示划线；匹配失败、重复或重叠则不划线，不修改意见或原稿。
   - `partial`：所需参考文件未完整读取、扫描未成功或已请求搜索失败。回答保留展示，状态与回答分开呈现。

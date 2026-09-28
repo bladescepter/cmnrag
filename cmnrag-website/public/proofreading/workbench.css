@@ -44,9 +44,15 @@
 .proofreading-page .task-heading p { max-width: none; margin: var(--space-xs) 0 0; color: var(--color-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
 .proofreading-page .task-state { flex: none; color: var(--color-accent); font-family: var(--font-mono); font-size: var(--text-xs); }
 .proofreading-page .task-progress { display: flex; flex-wrap: wrap; gap: var(--space-xs); padding: var(--space-xs) 0; font-family: var(--font-mono); font-size: var(--text-xs); }
-.proofreading-page .stage { padding: var(--space-2xs) var(--space-xs); color: var(--color-muted); border: var(--rule-hair) solid var(--color-rule); }
-.proofreading-page .stage.done { color: var(--color-success); border-color: var(--color-success); }
+.proofreading-page .phase-stepper { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs) var(--space-lg); margin: var(--space-2xs) 0; }
+.proofreading-page .phase-stepper .phase { display: inline-flex; align-items: center; gap: 0.45em; padding: var(--space-2xs) 0; color: var(--color-muted); font-size: var(--text-sm); }
+.proofreading-page .phase-stepper .phase.done { color: var(--color-ink); }
+.proofreading-page .phase-stepper .phase.active { color: var(--color-accent); font-weight: 600; }
+.proofreading-page .phase-spinner { display: inline-block; width: 0.9em; height: 0.9em; border: 2px solid var(--color-accent-soft); border-top-color: var(--color-accent); border-radius: 50%; animation: phase-spin 0.9s linear infinite; }
+@keyframes phase-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .proofreading-page .phase-spinner { animation: none; } }
 .proofreading-page .task-note { width: 100%; max-width: none; color: var(--color-danger); }
+.proofreading-page .task-note.elapsed { color: var(--color-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
 .proofreading-page .review-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-md); }
 .proofreading-page .source-panel, .proofreading-page .findings-panel { min-width: 0; }
 .proofreading-page .panel-title { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-xs); padding: var(--space-md) 0; border-bottom: var(--rule-hair) solid var(--color-rule-strong); }

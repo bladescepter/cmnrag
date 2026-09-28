@@ -35,6 +35,7 @@ export function openStore(filename) {
     const row = select.get(id, userId);
     return row && { id: row.id, title: row.title,
       version_id: row.version_id, rule_version: row.rule_version, model: row.model,
+      created_at: row.created_at, updated_at: row.updated_at,
       content: row.content, status: row.status, result_text: row.result_text, result_format: row.result_format, usage: JSON.parse(row.usage || '{}'),
       stages: JSON.parse(row.stages), issues: JSON.parse(row.issues), unverified: JSON.parse(row.unverified), verified: JSON.parse(row.verified ?? '[]'), sources: JSON.parse(row.sources ?? '[]'), note: row.note };
   }
