@@ -134,7 +134,7 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
     ready: true, offlinePartial: true, online: true, execution: 'pi-skill-v1',
     run: async (task) => {
       runLog.push(task.id);
-      if (runLog.length === 1) return { format: 'pi-final-text-v1', text: finalText, incomplete: false, usage: { calls: 7, totalTokens: 40700, estimatedUsd: 0.06, available: true } };
+      if (runLog.length === 1) return { format: 'pi-final-text-v1', text: finalText, incomplete: false, thinkingLevel: 'medium', usage: { calls: 7, totalTokens: 40700, estimatedUsd: 0.06, available: true } };
       if (runLog.length === 2) return { format: 'pi-final-text-v1', text: '未全部完成的回答', incomplete: true, usage: { calls: 3, totalTokens: 100, estimatedUsd: 0, available: false } };
       throw new Error('model_output_truncated');
     },
@@ -143,6 +143,7 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
     const first = await (await app.submit()).json();
     const done = await waitFor(path => app.request(path), first.id, 'completed');
     assert.equal(done.result_format, 'pi-final-text-v1');
+    assert.equal(done.thinking_level, 'medium'); // 实际思考级别随任务入库，供对照实验与审计。
     assert.equal(done.result_text, finalText); // 逐字保存，含换行
     assert.ok(Number.isFinite(Date.parse(done.created_at)));
     assert.ok(Date.parse(done.updated_at) >= Date.parse(done.created_at)); // 前端据此显示已持续/用时

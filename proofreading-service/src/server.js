@@ -106,8 +106,9 @@ export function createBackend({ store, runner, signingSecret, logger = null }) {
             const status = result.incomplete ? 'partial' : 'completed';
             // Store the actual final assistant text, unchanged; no JSON/anchor/semantic postprocessor.
             store.update(task.id, { status, result_format: result.format, result_text: result.text, usage: result.usage || {},
+              thinking_level: typeof result.thinkingLevel === 'string' ? result.thinkingLevel : '',
               note: result.incomplete ? '技能执行未全部完成；保留 Pi 最终回答，不代表校对通过。' : '' });
-            logger?.log('task_done', { task: task.id, status, format: result.format });
+            logger?.log('task_done', { task: task.id, status, format: result.format, thinking_level: typeof result.thinkingLevel === 'string' ? result.thinkingLevel : null });
             continue;
           }
           // Legacy structured runners/results remain readable; the production runner uses final text.

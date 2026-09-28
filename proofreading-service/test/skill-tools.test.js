@@ -101,6 +101,27 @@ test('web_search wraps untrusted material, allows one grouped call, and reports 
   } finally { await offline.clean(); }
 });
 
+test('provided reference files count as fully read; scan still gates completeness', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'skill-tools-'));
+  try {
+    const cwd = join(root, 'workspace');
+    const skillDir = join(cwd, '.pi', 'skills', 'proofreading');
+    for (const [file, content] of Object.entries(rules)) {
+      await mkdir(join(skillDir, file, '..'), { recursive: true });
+      await writeFile(join(skillDir, file), content);
+    }
+    await mkdir(join(skillDir, 'drafts'));
+    const provided = Object.keys(rules).filter(file => file.startsWith('references/'));
+    const api = await createSkillTools({ cwd, skillDir, files: Object.keys(rules), content: draft, search: null, provided });
+    const byName = Object.fromEntries(api.tools.map(tool => [tool.name, tool]));
+    const run = (tool, args) => tool.execute('t', args, undefined, undefined, undefined);
+    assert.equal(await api.incomplete(), true); // 未扫描仍不完整，即使参考文件已提供。
+    await run(byName.write, { path: base + 'drafts/draft.md', content: draft });
+    await run(byName.bash, { command: `bash ${base}scripts/scan-keywords.sh ${base}drafts/draft.md` });
+    assert.equal(await api.incomplete(), false); // 提供即视为已读：无需任何 read 调用。
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('a fully executed flow is complete; search availability alone does not block it', async () => {
   const app = await setup({ async search() { return []; } });
   try {

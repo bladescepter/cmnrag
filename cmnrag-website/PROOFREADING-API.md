@@ -26,6 +26,7 @@
     "content": "原文",
     "created_at": "ISO-8601", "updated_at": "ISO-8601",
     "result_format": "pi-final-text-v1",
+    "thinking_level": "实际使用的思考级别（如 medium；历史任务可能为空）",
     "result_text": "Pi 最终回答原文（逐字，含换行；completed/partial 时存在）",
     "usage": { "calls": 7, "totalTokens": 40700, "estimatedUsd": 0.06, "available": true },
     "stages": [{ "name": "Pi 读取技能参考文件", "status": "done|running|pending" }],

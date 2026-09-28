@@ -28,6 +28,7 @@ export function openStore(filename) {
   if (!columns.has('result_text')) db.exec("ALTER TABLE tasks ADD COLUMN result_text TEXT NOT NULL DEFAULT ''");
   if (!columns.has('result_format')) db.exec("ALTER TABLE tasks ADD COLUMN result_format TEXT NOT NULL DEFAULT ''");
   if (!columns.has('usage')) db.exec("ALTER TABLE tasks ADD COLUMN usage TEXT NOT NULL DEFAULT '{}' ");
+  if (!columns.has('thinking_level')) db.exec("ALTER TABLE tasks ADD COLUMN thinking_level TEXT NOT NULL DEFAULT ''");
   // Model calls cannot resume in-place after a process restart.
   db.prepare("UPDATE tasks SET status = 'failed', note = '服务重启，任务未完成；请人工确认是否重新提交。', updated_at = ? WHERE status = 'running'").run(new Date().toISOString());
   const select = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?');
@@ -37,6 +38,7 @@ export function openStore(filename) {
       version_id: row.version_id, rule_version: row.rule_version, model: row.model,
       created_at: row.created_at, updated_at: row.updated_at,
       content: row.content, status: row.status, result_text: row.result_text, result_format: row.result_format, usage: JSON.parse(row.usage || '{}'),
+      thinking_level: row.thinking_level ?? '',
       stages: JSON.parse(row.stages), issues: JSON.parse(row.issues), unverified: JSON.parse(row.unverified), verified: JSON.parse(row.verified ?? '[]'), sources: JSON.parse(row.sources ?? '[]'), note: row.note };
   }
   return {
@@ -68,7 +70,7 @@ export function openStore(filename) {
       } catch (error) { db.exec('ROLLBACK'); throw error; }
     },
     update(id, fields) {
-      const allowed = ['status', 'stages', 'issues', 'unverified', 'note', 'title', 'verified', 'sources', 'result_text', 'result_format', 'usage'];
+      const allowed = ['status', 'stages', 'issues', 'unverified', 'note', 'title', 'verified', 'sources', 'result_text', 'result_format', 'usage', 'thinking_level'];
       const entries = Object.entries(fields).filter(([key]) => allowed.includes(key));
       if (!entries.length) return;
       const values = entries.map(([key, value]) => key === 'stages' || key === 'issues' || key === 'unverified' || key === 'verified' || key === 'sources' || key === 'usage' ? JSON.stringify(value) : value);
