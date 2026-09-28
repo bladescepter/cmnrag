@@ -262,12 +262,14 @@ window.addEventListener("popstate", () => {
   const id = new URLSearchParams(location.search).get("task");
   if (validId(id)) openTask(id, false); else newDraft(false);
 });
+// 轮询间隔避开 5 秒：本地 wrangler dev 的 keep-alive 空闲超时恰为 5 秒，
+// 5 秒轮询会与其发生竞态并触发 wrangler dev 致命退出（workers-sdk#15452）。
 setInterval(() => {
   if (currentId && (!currentTask || activeStates.has(currentTask.status))) {
     refreshTask(currentId);
     refreshList().catch(() => {});
   }
-}, 5000);
+}, 3000);
 (async function init() {
   try {
     let auth;
