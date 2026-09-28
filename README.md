@@ -28,9 +28,9 @@
 - 采访中心一版/二版值班排班：周期轮换生成、格子级锁定、均衡分配
 - 值班表查看与导出，历史班表追溯
 
-### 校对（proofread）
+### 校对（proofreading）
 
-- 静态工具页 `/proofread/`，配合资料库使用
+- 静态工具页 `/proofreading/`，配合资料库使用
 
 ## 数据范围与规范
 
@@ -51,7 +51,7 @@ cmnrag-website/         ← Cloudflare Workers 服务（三个模块共用一个
   src/ingest/           ← 导入脚本共享逻辑
   paiban-web/           ← 排班表前端源码（React+Vite → public/schedule/）
   paiban-data/          ← 排班权威源（xlsx 综合表格、见报日历、导入脚本）
-  public/               ← 静态前端（index 工具集主页、db 资料库、schedule 排班表、proofread 校对）
+  public/               ← 静态前端（index 工具集主页、db 资料库、schedule 排班表、proofreading 校对）
   scripts/              ← import-archive / ingest-vectors 导入脚本
 scripts/                ← 电子报抓取与清洗脚本（fetch_epaper、enrich_regions 等）
 README.md               ← 本文件

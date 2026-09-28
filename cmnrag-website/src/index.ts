@@ -17,6 +17,7 @@ import {
 } from "./auth";
 import { chooseEvidenceCount, rerankSources } from "./ai/rerank";
 import paibanApp from "./paiban";
+import { handleProofreading } from "./proofreading/gateway";
 
 const EMBEDDING_MODEL = "@cf/baai/bge-m3";
 // 70B fp8 指令遵循与稳定性远优于 8B（实测 8B 会被证据中科普设问句劫持、复读无关内容）；
@@ -193,6 +194,10 @@ export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
 		try {
+			// 工作台规范地址为 /proofreading/；旧的 /proofread/ 仅作兼容跳转。
+			if (request.method === "GET" && ["/proofread", "/proofread/", "/proofread/index.html"].includes(url.pathname)) {
+				return Response.redirect(new URL(`/proofreading/${url.search}`, url.origin).toString(), 308);
+			}
 			if (url.pathname === "/health") return json({ status: "ok" });
 			// 排班健康检查放行（无需登录）
 			if (url.pathname === "/api/pb/health") {
@@ -214,6 +219,10 @@ export default {
 				const user = await requireUser(request, env);
 				if (!user || user.role !== "admin") return error("forbidden", 403);
 				return handleAdminAction(request, env, adminMatch[1], adminMatch[2] as "approve" | "reject");
+			}
+			// 校对服务所有路径先做身份、账号状态和请求边界校验；不进入档案接口。
+			if (url.pathname === "/api/proofreading" || url.pathname.startsWith("/api/proofreading/")) {
+				return handleProofreading(request, env, await requireUser(request, env));
 			}
 			// 排班子应用：/api/pb/* 交给 paiban，并保留主系统登录鉴权。
 			if (url.pathname.startsWith("/api/pb/")) {

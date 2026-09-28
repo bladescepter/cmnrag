@@ -1,0 +1,95 @@
+/* Hallmark · genre: editorial · macrostructure: Workbench · design-system: design.md · designed-as-app
+ * tone: editorial-utilitarian · theme: Broadsheet palette + Garden typography
+ * pre-emit critique: P4 H5 E4 S5 R5 V4 */
+.proofreading-page [hidden] { display: none !important; }
+.proofreading-page .workbench { width: min(100% - 2 * var(--space-lg), 86rem); margin: auto; padding: var(--space-sm) 0 var(--space-xl); }
+.proofreading-page .workbench-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); padding-bottom: var(--space-xs); border-bottom: var(--rule-hair) solid var(--color-rule-strong); }
+.proofreading-page .workbench-intro { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2xs) var(--space-md); min-width: 0; }
+.proofreading-page .workbench-head h1 { margin: 0; font-size: clamp(1.45rem, 2vw, 1.85rem); font-weight: 600; }
+.proofreading-page .workbench-head p { max-width: none; margin: 0; color: var(--color-muted); font-size: var(--text-xs); }
+.proofreading-page .service-status { flex: none; padding: var(--space-xs) var(--space-sm); color: var(--color-danger); border: var(--rule-hair) solid currentColor; font-family: var(--font-mono); font-size: var(--text-xs); }
+.proofreading-page .service-status.online { color: var(--color-success); }
+.proofreading-page .page-message { margin: var(--space-lg) 0; padding: var(--space-sm) var(--space-md); color: var(--color-danger); border-left: 3px solid currentColor; background: var(--color-paper-2); font-size: var(--text-sm); }
+.proofreading-page .login-link { display: block; margin-top: var(--space-xs); }
+.proofreading-page .workbench-layout { display: grid; grid-template-columns: clamp(10.5rem, 16vw, 13rem) minmax(0, 1fr); gap: var(--space-md); padding-top: var(--space-md); }
+.proofreading-page .workbench-rail { min-width: 0; border-right: var(--rule-hair) solid var(--color-rule); padding-right: var(--space-md); }
+.proofreading-page .workbench-rail h2 { margin: 0 0 var(--space-2xs); font-size: var(--text-lg); }
+.proofreading-page .rail-note { margin: 0 0 var(--space-md); color: var(--color-muted); font-size: var(--text-xs); }
+.proofreading-page .rail-controls { display: block; }
+.proofreading-page .task-select { display: none; }
+.proofreading-page .text-action { display: block; width: 100%; min-height: 2.5rem; padding: var(--space-xs) var(--space-sm); color: var(--color-accent); background: var(--color-paper-2); border: var(--rule-hair) solid var(--color-rule-strong); text-align: left; white-space: nowrap; }
+.proofreading-page .text-action:hover, .proofreading-page .task-list-item:hover { background: var(--color-accent-soft); }
+.proofreading-page .task-list { margin-top: var(--space-md); border-top: var(--rule-hair) solid var(--color-rule); }
+.proofreading-page .task-list-item { display: flex; width: 100%; min-height: 4rem; flex-direction: column; align-items: flex-start; justify-content: center; gap: var(--space-2xs); padding: var(--space-sm) var(--space-xs); color: var(--color-ink); background: transparent; border: 0; border-bottom: var(--rule-hair) solid var(--color-rule); text-align: left; }
+.proofreading-page .task-list-item.selected { border-left: 3px solid var(--color-accent); background: var(--color-paper-2); }
+.proofreading-page .task-list-item strong { max-width: 100%; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.proofreading-page .task-list-item span { color: var(--color-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
+.proofreading-page .workbench-main { min-width: 0; }
+.proofreading-page .submit-form { width: min(100%, 50rem); }
+.proofreading-page .submit-form h2, .proofreading-page .welcome h2 { margin: 0; font-size: clamp(1.5rem, 2.5vw, 2.25rem); }
+.proofreading-page .task-heading h2 { margin: 0; font-size: clamp(1.2rem, 1.7vw, 1.55rem); }
+.proofreading-page .form-help, .proofreading-page .welcome p { max-width: 60ch; margin: var(--space-sm) 0 var(--space-lg); color: var(--color-muted); font-size: var(--text-sm); }
+.proofreading-page .submit-form label { display: block; margin: var(--space-lg) 0 var(--space-xs); color: var(--color-ink-2); font-family: var(--font-mono); font-size: var(--text-xs); }
+.proofreading-page .submit-form input, .proofreading-page .submit-form textarea { display: block; width: 100%; min-height: 2.75rem; padding: var(--space-sm); color: var(--color-ink); background: var(--color-paper-2); border: var(--rule-hair) solid var(--color-rule); border-radius: var(--radius-none); }
+.proofreading-page .submit-form textarea { min-height: 18rem; resize: vertical; line-height: 1.85; }
+
+.proofreading-page .form-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); margin-top: var(--space-lg); }
+.proofreading-page .form-actions span { color: var(--color-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
+.proofreading-page .form-actions button { min-height: 2.75rem; padding: var(--space-xs) var(--space-lg); color: var(--color-accent-ink); background: var(--color-accent); border: var(--rule-hair) solid var(--color-accent); white-space: nowrap; }
+.proofreading-page .form-actions button:hover:not(:disabled) { background: var(--color-ink); }
+.proofreading-page .form-actions button:active:not(:disabled) { transform: translateY(1px); }
+.proofreading-page .form-actions button:disabled { background: var(--color-muted); border-color: var(--color-muted); cursor: not-allowed; }
+.proofreading-page .task-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); padding-bottom: var(--space-xs); border-bottom: var(--rule-hair) solid var(--color-rule-strong); }
+.proofreading-page .task-heading a { display: inline-block; margin-bottom: var(--space-2xs); font-family: var(--font-mono); font-size: var(--text-xs); text-decoration: none; }
+.proofreading-page .task-heading p { max-width: none; margin: var(--space-xs) 0 0; color: var(--color-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
+.proofreading-page .task-state { flex: none; color: var(--color-accent); font-family: var(--font-mono); font-size: var(--text-xs); }
+.proofreading-page .task-progress { display: flex; flex-wrap: wrap; gap: var(--space-xs); padding: var(--space-xs) 0; font-family: var(--font-mono); font-size: var(--text-xs); }
+.proofreading-page .stage { padding: var(--space-2xs) var(--space-xs); color: var(--color-muted); border: var(--rule-hair) solid var(--color-rule); }
+.proofreading-page .stage.done { color: var(--color-success); border-color: var(--color-success); }
+.proofreading-page .task-note { width: 100%; max-width: none; color: var(--color-danger); }
+.proofreading-page .review-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-md); }
+.proofreading-page .source-panel, .proofreading-page .findings-panel { min-width: 0; }
+.proofreading-page .panel-title { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-xs); padding: var(--space-md) 0; border-bottom: var(--rule-hair) solid var(--color-rule-strong); }
+.proofreading-page .panel-title h3 { margin: 0; font-size: var(--text-md); }
+.proofreading-page .panel-title span { color: var(--color-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
+.proofreading-page .source-text { max-height: max(24rem, calc(100dvh - 13rem)); overflow: auto; padding: var(--space-md) var(--space-sm); background: var(--color-paper-2); line-height: 1.9; overflow-wrap: anywhere; }
+.proofreading-page .source-paragraph { max-width: none; min-height: 1.9em; margin: 0; color: var(--color-ink); white-space: pre-wrap; }
+.proofreading-page .native-mark { color: inherit; background: transparent; text-decoration: underline var(--color-accent-2) 2px; text-underline-offset: 0.12em; }
+.proofreading-page .source-mark { color: var(--color-ink); background: var(--color-paper-3); border-bottom: 2px solid var(--color-accent-2); cursor: pointer; }
+.proofreading-page .source-mark.active { background: var(--color-accent-soft); border-color: var(--color-accent); }
+.proofreading-page .findings { max-height: max(24rem, calc(100dvh - 13rem)); overflow: auto; }
+.proofreading-page .finding-card { padding: var(--space-lg) var(--space-xs); border-bottom: var(--rule-hair) solid var(--color-rule); cursor: pointer; }
+.proofreading-page .finding-card:hover, .proofreading-page .finding-card.active { background: var(--color-accent-soft); }
+.proofreading-page .finding-type { color: var(--color-accent-2); font-family: var(--font-mono); font-size: var(--text-xs); }
+.proofreading-page .finding-card blockquote { margin: var(--space-sm) 0; padding-left: var(--space-sm); border-left: 2px solid var(--color-accent-2); font-weight: 600; overflow-wrap: anywhere; }
+.proofreading-page .finding-card p { max-width: none; margin: var(--space-xs) 0; font-size: var(--text-sm); }
+.proofreading-page .finding-card .suggestion { color: var(--color-accent); }
+.proofreading-page .evidence { display: block; margin-top: var(--space-xs); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.proofreading-page .anchor-warning { max-width: none; color: var(--color-danger); font-size: var(--text-xs); }
+.proofreading-page .unverified { padding: var(--space-md); color: var(--color-ink-2); border-bottom: var(--rule-hair) solid var(--color-rule-strong); background: var(--color-paper-2); }
+.proofreading-page .unverified h4 { margin: 0; color: var(--color-danger); font-size: var(--text-sm); }
+.proofreading-page .unverified ul { margin: var(--space-xs) 0 0; padding-left: var(--space-lg); font-size: var(--text-sm); }
+.proofreading-page .search-hints { padding: var(--space-md); color: var(--color-ink-2); border-bottom: var(--rule-hair) solid var(--color-rule); }
+.proofreading-page .search-hints h4 { margin: 0; font-size: var(--text-sm); }
+.proofreading-page .search-hints ul { margin: var(--space-xs) 0 0; padding-left: var(--space-lg); font-size: var(--text-sm); }
+.proofreading-page .search-hints li { margin-bottom: var(--space-sm); overflow-wrap: anywhere; }
+.proofreading-page .verified { padding: var(--space-md); color: var(--color-ink-2); background: var(--color-paper-2); }
+.proofreading-page .verified h4 { margin: 0; color: var(--color-ok, var(--color-ink)); font-size: var(--text-sm); }
+.proofreading-page .verified ul { margin: var(--space-xs) 0 0; padding-left: var(--space-lg); font-size: var(--text-sm); }
+.proofreading-page .verified li { margin-bottom: var(--space-sm); }
+.proofreading-page .verified-note { margin: 0 0 var(--space-xs); color: var(--color-ink-3, var(--color-ink-2)); font-size: var(--text-xs); }
+.proofreading-page .native-result { white-space: pre-wrap; overflow-wrap: anywhere; padding: var(--space-lg); line-height: 1.85; color: var(--color-ink); }
+.proofreading-page .empty-note { max-width: none; margin: var(--space-lg) 0; color: var(--color-muted); font-size: var(--text-sm); }
+.proofreading-page .welcome { padding: var(--space-xl) 0; }
+@media (max-width: 60rem) {
+  .proofreading-page .workbench-layout { grid-template-columns: minmax(0, 1fr); }
+  .proofreading-page .workbench-rail { display: grid; gap: var(--space-2xs); border: 0; padding: 0; }
+  .proofreading-page .workbench-rail h2 { display: none; }
+  .proofreading-page .rail-note { margin: 0; }
+  .proofreading-page .rail-controls { display: flex; gap: var(--space-xs); }
+  .proofreading-page .text-action { width: auto; white-space: nowrap; }
+  .proofreading-page .task-select { display: block; flex: 1; min-width: 0; min-height: 2.5rem; padding: var(--space-2xs) var(--space-xs); color: var(--color-ink); background: var(--color-paper-2); border: var(--rule-hair) solid var(--color-rule); font-size: var(--text-sm); }
+  .proofreading-page .task-list { display: none; }
+}
+@media (max-width: 48rem) { .proofreading-page .review-grid { grid-template-columns: minmax(0, 1fr); } .proofreading-page .source-text, .proofreading-page .findings { max-height: none; } }
+@media (max-width: 40rem) { .proofreading-page .workbench { width: calc(100% - 2 * var(--space-md)); padding-top: var(--space-xs); } .proofreading-page .workbench-head, .proofreading-page .task-heading { align-items: flex-start; flex-direction: column; gap: var(--space-xs); } .proofreading-page .service-status { padding: var(--space-2xs) var(--space-xs); } .proofreading-page .panel-title { align-items: flex-start; flex-wrap: wrap; } }

@@ -1,0 +1,9 @@
+{
+  "name": "cmnrag-proofreading-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.19" },
+  "scripts": { "start": "node src/main.js", "test": "node --test", "test:local": "node --env-file=.env src/single-draft.js", "dev:web": "node src/dev-web.js" },
+  "dependencies": { "@earendil-works/pi-coding-agent": "0.87.1" }
+}

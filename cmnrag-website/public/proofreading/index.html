@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>校对工作台 · 采访中心工具集</title>
+  <link rel="stylesheet" href="/site.css" />
+  <link rel="stylesheet" href="/proofreading/workbench.css" />
+</head>
+<body class="proofreading-page">
+<div id="auth-bar"><div class="auth-bar-inner"><div class="auth-left"><a class="auth-home" href="/" aria-label="返回主页"><span class="home-mark" aria-hidden="true">↖</span><span>主页</span></a></div><nav class="auth-nav" aria-label="主导航"><div class="nav-menu"><a class="auth-link nav-trigger" href="/db" aria-haspopup="true"><span>报纸资料库</span><span class="nav-caret" aria-hidden="true">⌄</span></a><div class="nav-dropdown" role="menu"><a class="nav-dropdown-item" href="/db/stats" role="menuitem"><span><strong>各省发稿看板</strong><small>按地区查看发稿量</small></span><span class="nav-arrow" aria-hidden="true">↗</span></a><a class="nav-dropdown-item" href="/column-dashboard/" role="menuitem"><span><strong>栏目运行看板</strong><small>栏目状态与趋势</small></span><span class="nav-arrow" aria-hidden="true">↗</span></a></div></div><a class="auth-link" href="/schedule">排班系统</a></nav><div class="auth-right"></div></div></div>
+<main class="workbench">
+  <header class="workbench-head">
+    <div class="workbench-intro"><h1>校对工作台</h1><p>原文与意见对照 · 仅供编辑审定</p></div>
+    <span class="service-status" id="service-status" role="status">正在连接服务…</span>
+  </header>
+  <div id="page-message" class="page-message" role="alert" hidden></div>
+  <div class="workbench-layout">
+    <aside class="workbench-rail" aria-label="我的校对任务">
+      <h2>我的稿件</h2>
+      <p class="rail-note">仅保留最近 5 篇，更早的提交后自动删除</p>
+      <div class="rail-controls">
+        <button type="button" id="new-task" class="text-action">＋ 新建校对</button>
+        <select id="task-select" class="task-select" aria-label="选择历史稿件"></select>
+      </div>
+      <div id="task-list" class="task-list" aria-live="polite"><p class="empty-note">登录后查看稿件。</p></div>
+    </aside>
+    <section class="workbench-main" aria-label="校对内容">
+      <form id="submit-form" class="submit-form" hidden>
+        <h2>提交稿件</h2>
+        <p class="form-help">仅提交获准用于校对的内容。提交后保存原文版本，不自动修改原稿。</p>
+        <label for="draft-content">稿件原文（标题在首行将自动识别）</label><textarea id="draft-content" name="content" rows="15" required placeholder="粘贴稿件全文"></textarea>
+        <div class="form-actions"><span id="character-count">0 字符</span><button type="submit" id="submit-button" disabled>提交校对</button></div>
+      </form>
+      <div id="task-view" hidden>
+        <div class="task-heading"><div><a href="/proofreading/" id="back-to-new">← 返回稿件列表</a><h2 id="task-title"></h2><p id="task-meta"></p></div><span id="task-status" class="task-state"></span></div>
+        <div id="task-progress" class="task-progress" role="status" aria-live="polite"></div>
+        <div class="review-grid"><section class="source-panel" aria-label="稿件原文"><div class="panel-title"><h3>原文</h3><span id="source-mark-count">只读 · 不自动改写</span></div><div id="source-text" class="source-text"></div></section><section class="findings-panel" aria-label="校对意见"><div class="panel-title"><h3>校对意见</h3><span id="finding-count"></span></div><div id="findings" class="findings" aria-live="polite"></div></section></div>
+      </div>
+      <div id="empty-view" class="welcome"><h2>从一篇稿件开始</h2><p>提交后可离开页面；任务进度和校对意见会保存在服务端，重新登录仍可查看。</p></div>
+    </section>
+  </div>
+</main>
+<script src="/auth.js"></script>
+<script type="module" src="/proofreading/workbench.js"></script>
+</body>
+</html>
