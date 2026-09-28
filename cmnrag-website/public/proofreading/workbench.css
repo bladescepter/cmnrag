@@ -54,7 +54,9 @@
 .proofreading-page .panel-title span { color: var(--color-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
 .proofreading-page .source-text { max-height: max(24rem, calc(100dvh - 13rem)); overflow: auto; padding: var(--space-md) var(--space-sm); background: var(--color-paper-2); line-height: 1.9; overflow-wrap: anywhere; }
 .proofreading-page .source-paragraph { max-width: none; min-height: 1.9em; margin: 0; color: var(--color-ink); white-space: pre-wrap; }
-.proofreading-page .native-mark { color: inherit; background: transparent; text-decoration: underline var(--color-accent-2) 2px; text-underline-offset: 0.12em; }
+.proofreading-page .native-mark { color: inherit; background: transparent; text-decoration: underline var(--color-accent-2) 2px; text-underline-offset: 0.12em; position: relative; }
+.proofreading-page .native-mark[data-n]::after { content: attr(data-n); position: relative; top: -0.5em; margin-left: 0.15em; padding: 0 0.3em; border: var(--rule-hair) solid var(--color-rule); border-radius: var(--radius-none); color: var(--color-muted); font-family: var(--font-mono); font-size: var(--text-3xs, 0.6875rem); line-height: 1; vertical-align: baseline; }
+.proofreading-page .opinion-number { display: inline-block; min-width: 1.6em; margin-right: 0.5em; padding: 0.05em 0.3em; border: var(--rule-hair) solid var(--color-rule); border-radius: var(--radius-none); color: var(--color-muted); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.4; text-align: center; }
 .proofreading-page .source-mark { color: var(--color-ink); background: var(--color-paper-3); border-bottom: 2px solid var(--color-accent-2); cursor: pointer; }
 .proofreading-page .source-mark.active { background: var(--color-accent-soft); border-color: var(--color-accent); }
 .proofreading-page .findings { max-height: max(24rem, calc(100dvh - 13rem)); overflow: auto; }

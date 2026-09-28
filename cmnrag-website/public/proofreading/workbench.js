@@ -1,6 +1,6 @@
 /* The workbench renders only server state: no synthetic progress or sample findings. */
 import { verifyAnchor } from "./anchors.js";
-import { locateFinalOpinionMarks } from "./display-marks.js";
+import { locateOpinionMarks, OPINION_LINE } from "./display-marks.js";
 import { requestJson } from "./request.js";
 const $ = (id) => document.getElementById(id);
 const api = requestJson;
@@ -88,26 +88,49 @@ function renderReview(task) {
   if (task.result_format === "pi-final-text-v1") {
     // Only AFTER completion: derive optional display marks from the final answer.
     // Ambiguous/nonliteral quotes remain unmarked; this never changes the Pi answer.
-    const marks = task.status === "completed" ? locateFinalOpinionMarks(content, safeText(task.result_text)) : [];
+    // 意见行按顺序编号；划线携带同一编号；未定位的意见显式计数提示。
+    const answer = safeText(task.result_text);
+    const opinions = task.status === "completed" ? locateOpinionMarks(content, answer) : [];
+    const marks = opinions.flatMap(opinion => opinion.spans.map(span => ({ ...span, number: opinion.number }))).sort((a, b) => a.start - b.start);
     let base = 0, markIndex = 0;
     for (const text of paragraphs) {
       const paragraph = node("p", "source-paragraph");
       let cursor = 0;
       while (markIndex < marks.length && marks[markIndex].start < base + text.length) {
-        const { start, end } = marks[markIndex++];
+        const { start, end, number } = marks[markIndex++];
         if (start < base || end > base + text.length) continue;
         paragraph.append(document.createTextNode(text.slice(cursor, start - base)));
-        paragraph.append(node("mark", "native-mark", text.slice(start - base, end - base)));
+        const mark = node("mark", "native-mark", text.slice(start - base, end - base));
+        mark.setAttribute("data-n", String(number));
+        mark.setAttribute("aria-label", `第 ${number} 条意见引文`);
+        paragraph.append(mark);
         cursor = end - base;
       }
       paragraph.append(document.createTextNode(text.slice(cursor)));
       source.append(paragraph);
       base += text.length + 1; // Original paragraphs are split on the exact newline character.
     }
-    $("source-mark-count").textContent = marks.length ? `划线 ${marks.length} 处 · 仅标记可唯一定位的原文` : "只读 · 不自动改写";
+    const locatedCount = opinions.filter(opinion => opinion.spans.length).length;
+    const unlocatedCount = opinions.length - locatedCount;
+    const spanCount = marks.length;
+    $("source-mark-count").textContent = opinions.length
+      ? `意见 ${opinions.length} 条 · 划线 ${spanCount} 处${unlocatedCount ? ` · ${unlocatedCount} 条未定位（引文与原文不一致）` : ""}`
+      : "只读 · 不自动改写";
     $("finding-count").textContent = "Pi 最终回答";
     // textContent + pre-wrap preserves every character without executing HTML or reconstructing opinions.
-    findings.append(node("div", "native-result", safeText(task.result_text)));
+    // 意见行前置编号徽标（独立元素），正文文本节点逐字保留，不增删不改。
+    const result = node("div", "native-result");
+    const lines = answer.split("\n");
+    let opinionIndex = 0;
+    lines.forEach((line, index) => {
+      if (OPINION_LINE.test(line)) {
+        opinionIndex++;
+        result.append(node("span", "opinion-number", String(opinionIndex)));
+      }
+      result.append(document.createTextNode(line));
+      if (index < lines.length - 1) result.append(document.createTextNode("\n"));
+    });
+    findings.append(result);
     return;
   }
   $("source-mark-count").textContent = "只读 · 不自动改写";
