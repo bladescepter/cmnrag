@@ -11,7 +11,7 @@
 <div id="auth-bar"><div class="auth-bar-inner"><div class="auth-left"><a class="auth-home" href="/" aria-label="返回主页"><span class="home-mark" aria-hidden="true">↖</span><span>主页</span></a></div><nav class="auth-nav" aria-label="主导航"><div class="nav-menu"><a class="auth-link nav-trigger" href="/db" aria-haspopup="true"><span>报纸资料库</span><span class="nav-caret" aria-hidden="true">⌄</span></a><div class="nav-dropdown" role="menu"><a class="nav-dropdown-item" href="/db/stats" role="menuitem"><span><strong>各省发稿看板</strong><small>按地区查看发稿量</small></span><span class="nav-arrow" aria-hidden="true">↗</span></a><a class="nav-dropdown-item" href="/column-dashboard/" role="menuitem"><span><strong>栏目运行看板</strong><small>栏目状态与趋势</small></span><span class="nav-arrow" aria-hidden="true">↗</span></a></div></div><a class="auth-link" href="/schedule">排班系统</a></nav><div class="auth-right"></div></div></div>
 <main class="workbench">
   <header class="workbench-head">
-    <div class="workbench-intro"><h1>校对工作台</h1><p>原文与意见对照 · 仅供编辑审定</p></div>
+    <div class="workbench-intro"><h1>校对工作台</h1></div>
     <span class="service-status" id="service-status" role="status">正在连接服务…</span>
   </header>
   <div id="page-message" class="page-message" role="alert" hidden></div>
@@ -30,8 +30,7 @@
         <h2>提交稿件</h2>
         <p class="form-help">仅提交获准用于校对的内容。提交后保存原文版本，不自动修改原稿。</p>
         <label for="draft-content">稿件原文（标题在首行将自动识别）</label><textarea id="draft-content" name="content" rows="15" required placeholder="粘贴稿件全文"></textarea>
-        <div class="model-row" id="model-row" hidden><label for="model-select">校对模型</label><select id="model-select" aria-label="选择校对模型"></select></div>
-        <div class="form-actions"><span><span id="character-count">0 字符</span><span id="balance-display" class="balance-display" hidden></span></span><button type="submit" id="submit-button" disabled>提交校对</button></div>
+        <div class="form-actions"><span id="character-count">0 字符</span><button type="submit" id="submit-button" disabled>提交校对</button></div>
       </form>
       <div id="task-view" hidden>
         <div class="task-heading"><div><a href="/proofreading/" id="back-to-new">← 返回稿件列表</a><h2 id="task-title"></h2><p id="task-meta"></p></div><span id="task-status" class="task-state"></span></div>

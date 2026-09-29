@@ -125,6 +125,10 @@ test('availability identifies offline-partial mode without starting a model task
   try {
     assert.deepEqual(await (await native.request('/availability')).json(), { ready: true, execution: 'pi-skill-v1', mode: 'online-test', models: { default: 'default', available: ['default'] } });
   } finally { await native.close(); }
+  const production = await setup({ ready: true, offlinePartial: false, online: true, execution: 'pi-skill-v1', run: async () => { throw new Error('must not run'); } });
+  try {
+    assert.deepEqual(await (await production.request('/availability')).json(), { ready: true, execution: 'pi-skill-v1', mode: 'online', models: { default: 'default', available: ['default'] } });
+  } finally { await production.close(); }
 });
 
 test('multi-model: submissions route to the selected runner; unknown models are rejected', async () => {

@@ -16,13 +16,7 @@ let ready = false;
 let submitting = false;
 let pendingKey = null;
 let requiresPaidConfirmation = false;
-// 已配置模型时提交携带页面所选模型；旧后台未提供清单时由后端用默认模型。
-function modelBody(content) {
-  const row = $("model-row");
-  if (!row || row.hidden) return { content };
-  return { content, model: $("model-select").value };
-}
-const modelLabels = { "deepseek/deepseek-flash": "DeepSeek V4.1 Flash（快）", "xiaomi/mimo-v2.6-flash": "MiMo V2.6 Flash（小米）" };
+// 提交只用默认模型；后端 availability 仍返回清单，页面不再展示选择器。
 
 function message(text) {
   $("page-message").textContent = text;
@@ -35,14 +29,13 @@ function node(tag, className, text) {
   return element;
 }
 function safeText(value) { return typeof value === "string" ? value : ""; }
-// 余额展示：后台中转的 DeepSeek 账户余额（全部已登录用户可见）；无数据时隐藏。
+// 余额展示：后台中转的 DeepSeek 账户余额（全部已登录用户可见），显示在顶栏服务状态位置；
+// 无数据时不覆盖顶栏已有的服务状态文字。
 function renderBalance(balance) {
-  const display = $("balance-display");
-  if (!display) return;
-  if (!balance || typeof balance.total !== "string") { display.hidden = true; display.textContent = ""; return; }
+  const display = $("service-status");
+  if (!balance || typeof balance.total !== "string") return;
   const currency = balance.currency === "CNY" ? "¥" : `${balance.currency} `;
-  display.hidden = false;
-  display.textContent = ` · 余额 ${currency}${Number(balance.total).toFixed(2)}${balance.is_available === false ? "（不可用）" : ""}`;
+  display.textContent = `余额 ${currency}${Number(balance.total).toFixed(2)}${balance.is_available === false ? "（不可用）" : ""}`;
 }
 async function refreshBalance() {
   try { renderBalance((await api("/availability")).balance); } catch { /* 余额不可用不影响使用 */ }
@@ -326,7 +319,7 @@ $("submit-form").addEventListener("submit", async (event) => {
   const form = event.currentTarget;
   const content = $("draft-content").value;
   if (!content.trim()) { message("稿件原文不能为空。"); return; }
-  if (requiresPaidConfirmation && !window.confirm("这是本机试运行：Pi 将使用原版校对技能和工具完成任务，工具调用可能产生多轮模型用量，不再固定为五次。联网仅使用 TinyFish Search，不调用 Fetch、Agent 或 Browser。确认稿件及技能资料已获准外传，并接受本次 API 费用？")) return;
+  if (requiresPaidConfirmation && !window.confirm("Pi 将使用原版校对技能和工具完成任务，工具调用可能产生多轮模型用量。联网仅使用 TinyFish Search。确认稿件及技能资料已获准外传，并接受本次 API 费用？")) return;
   submitting = true;
   $("submit-button").disabled = true;
   message("");
@@ -334,7 +327,7 @@ $("submit-form").addEventListener("submit", async (event) => {
   const key = pendingKey || crypto.randomUUID();
   pendingKey = key;
   try {
-    const task = await api("/tasks", { method: "POST", headers: { "content-type": "application/json", "x-idempotency-key": key }, body: JSON.stringify(modelBody(content)) });
+    const task = await api("/tasks", { method: "POST", headers: { "content-type": "application/json", "x-idempotency-key": key }, body: JSON.stringify({ content }) });
     if (!validId(task.id)) throw new Error("任务已提交，但未返回有效编号；请刷新稿件列表后查看，不要重复提交。");
     form.reset();
     pendingKey = null;
@@ -379,28 +372,9 @@ setInterval(() => {
     if (state.ready !== true) throw new Error("校对服务尚未接入，暂不能提交稿件。");
     setReady(true);
     renderBalance(state.balance);
-    // 后端返回可用模型时显示选择器；只有一个模型时也展示当前选择，新增密钥后第二项自动出现。
-    const models = Array.isArray(state.models?.available) ? state.models.available.filter(id => typeof id === "string") : [];
-    if (models.length > 0) {
-      const select = $("model-select");
-      for (const id of models) {
-        const option = document.createElement("option");
-        option.value = id;
-        option.textContent = modelLabels[id] || id;
-        if (id === state.models.default) option.selected = true;
-        select.append(option);
-      }
-      $("model-row").hidden = false;
-    }
-    requiresPaidConfirmation = state.mode === "offline-partial-test" || state.mode === "online-test";
-    if (requiresPaidConfirmation) {
-      const online = state.mode === "online-test";
-      $("service-status").textContent = online ? "本机试运行 · Search 已接入" : "本机试运行 · 未联网";
-      $("submit-button").textContent = "确认后试运行";
-      $("submit-form").querySelector(".form-help").textContent = online
-        ? "仅限已获准外传的去敏稿。由 Pi 使用原版技能完成校对，按实际工具往返产生模型费用。网页原样展示最终回答；事实检索仅使用 TinyFish Search。请求体上限 200 KB；尚需真实效果对照，不可直接用于正式发稿。"
-        : "仅限已获准外传的去敏稿。由 Pi 使用原版技能完成校对，按实际工具往返产生模型费用。当前搜索不可用，任务若需要搜索则标记未完成。请求体上限 200 KB；不可直接用于正式发稿。";
-    }
+    // 生产（online）与本机试运行（*-test）都在提交前确认费用；仅本机试运行改按钮文案。
+    requiresPaidConfirmation = ["online", "online-test", "offline-partial-test"].includes(state.mode);
+    if (state.mode !== "online") $("submit-button").textContent = "确认后试运行";
     await refreshList();
     const id = new URLSearchParams(location.search).get("task");
     if (validId(id)) openTask(id, false); else setView("form");
