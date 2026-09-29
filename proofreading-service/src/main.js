@@ -4,6 +4,7 @@ import { openStore } from './store.js';
 import { createBackend } from './server.js';
 import { createPiRunner } from './pi-runner.js';
 import { createDiagnosticsLogger } from './diagnostics.js';
+import { isAllowedBindHost } from './bind-host.js';
 import { createTinyFishClient } from './tinyfish.js';
 import { createBalanceProvider } from './balance.js';
 
@@ -12,7 +13,7 @@ const stateDir = resolve(process.env.PROOFREADING_STATE_DIR);
 const host = process.env.PROOFREADING_HOST || '127.0.0.1';
 const port = Number(process.env.PROOFREADING_PORT || 8788);
 const secret = process.env.PROOFREADING_SIGNING_SECRET;
-if (!secret || secret.length < 32 || !Number.isSafeInteger(port) || port < 1 || port > 65535 || !['127.0.0.1', '::1'].includes(host)) throw new Error('Missing/invalid private binding or signing configuration');
+if (!secret || secret.length < 32 || !Number.isSafeInteger(port) || port < 1 || port > 65535 || !isAllowedBindHost(host)) throw new Error('Missing/invalid private binding or signing configuration');
 await mkdir(stateDir, { recursive: true, mode: 0o700 });
 const stateStat = await lstat(stateDir);
 if (!stateStat.isDirectory() || (stateStat.mode & 0o077)) throw new Error('State directory must be a private 0700 directory');
@@ -60,6 +61,6 @@ const store = openStore(join(stateDir, 'tasks.sqlite'));
 const service = createBackend({
   store, runners, balance, signingSecret: secret, logger: diagnostics,
 });
-diagnostics?.log('backend_start', { port, host, models: Object.keys(runners), online: Boolean(search) });
+diagnostics?.log('backend_start', { port, host, models: Object.keys(runners), rule_version: Object.values(runners)[0]?.ruleVersion || '', online: Boolean(search) });
 service.server.listen(port, host, () => { console.log(`Proofreading service listening on ${host}:${port}; models ${Object.keys(runners).join(', ')}`); service.kick(); });
 // Secrets, manuscript text, prompts and full model outputs must never be logged.

@@ -46,6 +46,16 @@ npm run dev:web
 
 **点击提交并再次确认后才可能产生模型费用**：Pi 将用原版技能完成任务，工具往返可能多轮，不再固定五次调用；网页使用模型声明的输出上限（Pi 会按剩余上下文进一步收紧），不套用命令行试验阈值；仅记录累计用量和 SDK 预估费用，估算缺失时标注不可用。输出被截断会记录明确的 `model_output_truncated`，不自动重试。联网仅 TinyFish Search、一次合并查询，材料不展示、不执行其中指令；搜索失败如实标 `partial`。网页没有程序内金额上限，仍应在供应商控制台设置额度。按 Ctrl+C 停止；本机数据留在被忽略的 `proofreading-service/data/web-test/`，**不自动清除**。
 
+## 生产部署（容器形态，需用户明确确认后执行）
+
+部署目标为腾讯云香港 VPS（Caddy + `hermes-net` 反代模式，公网入口 `https://proofreading.xiyuan.wiki`）。要点：
+
+1. **镜像**：`proofreading-service/Dockerfile`（Node 22 + Pi SDK 0.87.1）。构建不包含密钥、数据与测试；端口不发布到宿主公网，仅 `hermes-net` 内可达。
+2. **监听**：容器内 `PROOFREADING_HOST=0.0.0.0`（`bind-host.js` 白名单允许回环/通配/RFC1918 私网；公网地址与域名一律拒绝）；公网流量只经 Caddy TLS 反代进入。
+3. **挂载**：`/app/data` 为持久卷（任务库与诊断日志）；`/app/rules` 为技能包 bind mount（宿主目录 rsync 更新）；密钥经挂载的 `.env`（600 权限）提供。
+4. **权威文件更新流程**（已确认）：本地修改 `cmnrag/.pi/skills/proofreading/` → git 提交推送（审核留痕）→ rsync 到 VPS 宿主技能目录 → 重启容器（建议空闲期，队列无 running 任务时）→ 抽查验证。新规则指纹写入 `backend_start` 诊断日志，便于核对线上版本。
+5. **Worker 侧**：配置 `PROOFREADING_BACKEND_URL=https://proofreading.xiyuan.wiki/`，按仓库根 AGENTS.md 流程 dry-run 后部署；全链路验收含 `/availability`、真实提交与余额显示。
+
 ## 与本地效果的差异声明
 
 工程测试（含模拟模型/模拟搜索的端到端用例）只验证执行链路：技能激活、参考文件读取、扫描、搜索材料回流、最终文本逐字保存与权限边界。**不构成**“与本地 Pi 校对质量等价”的证据；正式使用前须按《校对服务落实方案.md》阶段 B 用同一模型、思考级别、技能和搜索能力做真实对照。Search-only 是用户明确允许的能力差异（无 Fetch/Agent/Browser）。
