@@ -17,9 +17,15 @@ const info = await lstat(file);
 if (!info.isFile() || info.size > 8000) throw new Error('文件不是普通文件或超过 8 KB');
 const content = await readFile(file, 'utf8');
 if (!content.trim() || content.length > TEST_LIMITS.maxDraftChars) throw new Error(`测试稿须为 1—${TEST_LIMITS.maxDraftChars} 字符`);
-const provider = process.env.PROOFREADING_MODEL_PROVIDER;
-const modelId = process.env.PROOFREADING_MODEL_ID;
-const apiKey = process.env.PROOFREADING_MODEL_API_KEY;
+// 本地止损试验只用小米；网页多模型配置时从目录中选小米，其余保持单模型旧配置兼容。
+const models = process.env.PROOFREADING_MODELS;
+const xiaomi = models?.split(',').map(value => value.trim())
+  .find(value => ['xiaomi/mimo-v2.6-flash', 'xiaomi-token-plan-cn/mimo-v2.6-flash'].includes(value));
+const [provider, modelId] = models ? (xiaomi?.split('/') || [undefined, undefined])
+  : [process.env.PROOFREADING_MODEL_PROVIDER, process.env.PROOFREADING_MODEL_ID];
+const keyName = provider && `PROOFREADING_API_KEY_${provider.toUpperCase().replace(/-/g, '_')}`;
+const apiKey = (keyName && process.env[keyName])
+  || (provider === process.env.PROOFREADING_MODEL_PROVIDER ? process.env.PROOFREADING_MODEL_API_KEY : undefined);
 if (modelId !== 'mimo-v2.6-flash' || !['xiaomi', 'xiaomi-token-plan-cn'].includes(provider) || !apiKey) throw new Error('需在本地 .env 配置对应的 MiMo-V2.6-Flash 提供商、模型及 Key');
 if ((apiKey.startsWith('tp-') || apiKey.startsWith('ttp-')) !== (provider === 'xiaomi-token-plan-cn')) throw new Error('Key 类型与提供商不匹配：Token Plan 与按量付费使用不同接口');
 const rulesDir = process.env.PROOFREADING_RULES_DIR || fileURLToPath(new URL('../../../proofreading/.pi/skills/proofreading/', import.meta.url));

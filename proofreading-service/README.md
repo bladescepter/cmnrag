@@ -16,13 +16,13 @@ Node.js ≥22.19、Pi SDK 固定 0.87.1。**版本库不提交**真实稿件、A
 
 ## 本地开发（只用去敏稿件）
 
-`npm ci && npm test`。启动前由操作者在安全的运行环境提供 `PROOFREADING_SIGNING_SECRET`（至少 32 字符，与 Worker secret `PROOFREADING_SIGNING_SECRET` 相同）、`PROOFREADING_RULES_DIR`（**已审定、只读**技能包目录）、`PROOFREADING_STATE_DIR`、`PROOFREADING_MODEL_PROVIDER`、`PROOFREADING_MODEL_ID`、`PROOFREADING_MODEL_API_KEY`（单模型兼容），或 `PROOFREADING_MODELS=xiaomi/mimo-v2.6-flash,deepseek/deepseek-flash` 加各提供商密钥 `PROOFREADING_API_KEY_XIAOMI` / `PROOFREADING_API_KEY_DEEPSEEK`（与旧 `PROOFREADING_MODEL_PROVIDER` 相同的提供商可沿用旧 `PROOFREADING_MODEL_API_KEY`；未配置密钥的模型不展示；页面选模型后按任务入队，未选时使用清单首项），可选 `PROOFREADING_THINKING_LEVEL`（未设置时用该版本 Pi 默认，不强制关闭）。模型标识必须是已在 Pi 中核实的精确提供商/ID；不能把讨论中的展示名称直接填入。后台只接受 `127.0.0.1` / `::1` 监听，默认 `127.0.0.1:8788`。
+`npm ci && npm test`。启动前由操作者在安全的运行环境提供 `PROOFREADING_SIGNING_SECRET`（至少 32 字符，与 Worker secret `PROOFREADING_SIGNING_SECRET` 相同）、`PROOFREADING_RULES_DIR`（**已审定、只读**技能包目录）、`PROOFREADING_STATE_DIR`、`PROOFREADING_MODELS=xiaomi/mimo-v2.6-flash,deepseek/deepseek-flash`（`.env` 首行，目录顺序决定默认模型），以及分别独立的 `PROOFREADING_API_KEY_XIAOMI`、`PROOFREADING_API_KEY_DEEPSEEK`；TinyFish 使用 `PROOFREADING_TINYFISH_API_KEY`。未配置密钥的模型不展示；页面选模型后按任务入队。未设置目录时仍兼容旧的单模型 `PROOFREADING_MODEL_PROVIDER` / `_ID` / `_API_KEY`，可选 `PROOFREADING_THINKING_LEVEL`（未设置时用该版本 Pi 默认，不强制关闭）。模型标识必须是已在 Pi 中核实的精确提供商/ID；不能把讨论中的展示名称直接填入。后台只接受 `127.0.0.1` / `::1` 监听，默认 `127.0.0.1:8788`。
 
 **默认不接受稿件**。仅限隔离环境下用去敏样本测试时，显式设置 `PROOFREADING_ENABLE_OFFLINE_PARTIAL=1`。本机网页试运行不设置每日篇数或 4000 字符的业务限制；每次提交仍须确认模型费用（原生工具循环可能产生多轮调用），HTTP 请求保留 200 KB 的传输保护上限。进程应使用专用低权限 OS 用户；状态目录仅该用户可读（0700），不可挂载用户个人 Pi 目录、仓库 `.env` 或其他项目。
 
 ### 本机单篇试运行（测试 Key，非网站上线）
 
-仅使用经你确认可发给模型的**去敏短稿**，保存到仓库之外的 `.md` / `.txt` 文件（≤1200 字符）。`proofreading-service/.env` 仅在本机使用，权限应为 0600；`PROOFREADING_MODEL_PROVIDER=xiaomi` 配按量付费 `sk-` Key，Token Plan 的 `tp-` / `ttp-` Key 对应 `xiaomi-token-plan-cn`，不得混用。不需要设置 Worker 签名密钥或启动网站；本地脚本不开放端口，不读档案数据。
+仅使用经你确认可发给模型的**去敏短稿**，保存到仓库之外的 `.md` / `.txt` 文件（≤1200 字符）。`proofreading-service/.env` 仅在本机使用，权限应为 0600；网页多模型和本地单稿止损试验均从目录选用小米配置。`xiaomi` 配按量付费 `sk-` Key，Token Plan 的 `tp-` / `ttp-` Key 对应 `xiaomi-token-plan-cn`，不得混用。不需要设置 Worker 签名密钥或启动网站；本地脚本不开放端口，不读档案数据。
 
 先在 `proofreading-service/` 运行**免费预检**：
 
