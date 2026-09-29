@@ -75,17 +75,6 @@ test('one native Pi prompt drives tools and returns final text unchanged, withou
     assert.equal(modelCalls, 7);
     assert.equal(searches, 2);
     assert.ok(stages.includes('Pi 执行关键词扫描'));
-    assert.ok(stages.includes('Pi 参考文件已随稿提供')); // 预注入有自己的阶段事件。
-    // 预注入：参考文件全文随首条 prompt 送达；我方注入的 <rules> 与稿件不含随机路径。
-    // 已知限制（仅影响跨任务首次调用的缓存命中，任务内前缀稳定）：
-    // ① Pi 自带系统提示嵌入会话 cwd；② /skill 展开的 <skill location=…> 标签嵌入技能绝对路径。
-    const firstRequest = requests[0];
-    const injected = firstRequest.messages.filter(m => m.role === 'user').map(m => JSON.stringify(m)).join('');
-    assert.ok(injected.includes('测试规则第一行'));
-    assert.ok(injected.includes('<manuscript>'));
-    const rulesSection = injected.slice(injected.indexOf('<rules>'), injected.indexOf('</rules>'));
-    assert.ok(rulesSection.length > 20);
-    assert.ok(!rulesSection.includes('cmnrag-native-pi'));
     const toolResults = requests.flatMap(r => r.messages.filter(m => m.role === 'tool'));
     assert.ok(toolResults.some(m => JSON.stringify(m).includes('测试扫描线索')));
     assert.ok(toolResults.some(m => JSON.stringify(m).includes('官方名称及原文')));
@@ -102,7 +91,7 @@ test('one native Pi prompt drives tools and returns final text unchanged, withou
     assert.equal(unpriced.text, finalText);
     assert.equal(unpriced.usage.available, false); // Missing bookkeeping does not destroy a completed answer.
     mode = 'incomplete';
-    assert.equal((await runner.run(task)).incomplete, false); // 参考文件已随稿预注入，部分读取不再阻塞完整性判定。
+    assert.equal((await runner.run(task)).incomplete, true); // A partial read isn't a full rule read.
     mode = 'truncated';
     const before = modelCalls;
     await assert.rejects(() => runner.run(task), /model_output_truncated/);

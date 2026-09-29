@@ -4,8 +4,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 // Reuse Pi's read/write/bash tools. Only their I/O boundary is restricted for a multi-user service.
-// provided: 随稿预注入的参考文件清单——完整性判定视为已读，模型无需再用 read 读取。
-export async function createSkillTools({ cwd, skillDir, files, content, search, onStage = () => {}, onSearch = () => {}, provided = [] }) {
+export async function createSkillTools({ cwd, skillDir, files, content, search, onStage = () => {}, onSearch = () => {} }) {
   const sdk = await import('@earendil-works/pi-coding-agent');
   const require = createRequire(import.meta.resolve('@earendil-works/pi-coding-agent'));
   const { Type } = require('typebox');
@@ -114,7 +113,7 @@ export async function createSkillTools({ cwd, skillDir, files, content, search, 
   return {
     tools: [read, write, bash, web],
     async incomplete() {
-      for (const file of files.filter(file => file.startsWith('references/') && !provided.includes(file))) {
+      for (const file of files.filter(file => file.startsWith('references/'))) {
         const path = join(skillDir, file);
         if ((readLines.get(path)?.size || 0) < (await readFile(path, 'utf8')).split('\n').length) return true;
       }

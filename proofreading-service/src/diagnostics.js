@@ -12,6 +12,8 @@ const SECRET_PATTERNS = [
 export function redactDiagnostic(value, maxChars = 300) {
   if (value === null || typeof value === 'boolean') return value;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  // 数组（如搜索词清单）逐项脱敏后保留，最多 20 项；修复此前被静默折看为 "object" 的丢失。
+  if (Array.isArray(value)) return value.slice(0, 20).map(item => redactDiagnostic(item, maxChars));
   if (typeof value !== 'string') return typeof value;
   let text = value.length > maxChars ? value.slice(0, maxChars) : value;
   for (const [pattern, replacement] of SECRET_PATTERNS) text = text.replace(pattern, replacement);

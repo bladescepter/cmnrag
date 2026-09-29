@@ -15,6 +15,9 @@ test('redactDiagnostic removes key-shaped substrings, truncates and passes safe 
   assert.equal(redactDiagnostic('x'.repeat(400)).length, 300);
   assert.equal(redactDiagnostic(42), 42);
   assert.equal(redactDiagnostic(true), true);
+  assert.deepEqual(redactDiagnostic(['台风路径', 'sk-abcdefghijklmnop123456']), ['台风路径', 'sk-***']); // 数组逐项保留并脱敏
+  assert.equal(redactDiagnostic(['a', 'b', 'c'].concat(Array.from({ length: 30 }, (_, i) => `q${i}`))).length, 20); // 上限 20 项
+  assert.equal(redactDiagnostic({ nested: 1 }), 'object'); // 普通对象仍不展开，保持最小化设计
   assert.equal(redactDiagnostic(undefined), 'undefined');
 });
 
