@@ -63,6 +63,11 @@ test('one native Pi prompt drives tools and returns final text unchanged, withou
       logger: { log(event, fields) { logs.push({ event, ...fields }); } },
       search: { async search(query) { searches++; return [{ title: '测试来源', url: 'https://authority.example/item', snippet: '官方名称及原文' }]; } },
     };
+    const productionRunner = await createPiRunner({ ...options, offlinePartial: false });
+    assert.equal(productionRunner.ready, true); // 有搜索能力时不要求启用隔离测试的离线开关。
+    assert.equal(productionRunner.online, true);
+    assert.equal(productionRunner.offlinePartial, false);
+    assert.equal((await createPiRunner({ ...options, search: null, offlinePartial: false })).ready, false);
     const runner = await createPiRunner(options);
     const task = { id: 'local', content: draft, rule_version: runner.ruleVersion, model: runner.model };
     const stages = [];

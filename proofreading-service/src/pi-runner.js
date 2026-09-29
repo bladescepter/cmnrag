@@ -18,7 +18,8 @@ const SAFE_ERRORS = new Set(['runner_version_changed', 'test_draft_too_long', 't
 export async function createPiRunner({ rulesDir, stateDir, provider, modelId, apiKey, offlinePartial = false,
   maxDraftChars = null, maxOutputTokens = null, testBudget = false, thinkingLevel,
   onUsage = () => {}, logger = null, search = null }) {
-  if (!rulesDir || !stateDir || !provider || !modelId || !apiKey || !offlinePartial) return { ready: false };
+  // 线上允许有搜索服务直接运行；只有无搜索的隔离试验才需显式允许部分核查。
+  if (!rulesDir || !stateDir || !provider || !modelId || !apiKey || (!search && !offlinePartial)) return { ready: false };
   await mkdir(stateDir, { recursive: true, mode: 0o700 });
   const snapshot = await Promise.all(RULE_FILES.map(file => readFile(join(rulesDir, file))));
   const hash = createHash('sha256').update('pi-skill-v1\0');
@@ -35,7 +36,7 @@ export async function createPiRunner({ rulesDir, stateDir, provider, modelId, ap
   const workspaces = join(stateDir, 'workspaces');
   await mkdir(workspaces, { recursive: true, mode: 0o700 });
   return {
-    ready: true, offlinePartial: true, online: Boolean(search), ruleVersion, model: `${provider}/${modelId}`, maxDraftChars,
+    ready: true, offlinePartial, online: Boolean(search), ruleVersion, model: `${provider}/${modelId}`, maxDraftChars,
     execution: 'pi-skill-v1',
     async run(task, onStage = () => {}) {
       if (task.rule_version !== ruleVersion || task.model !== `${provider}/${modelId}`) throw new Error('runner_version_changed');
