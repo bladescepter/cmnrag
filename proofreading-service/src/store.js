@@ -50,9 +50,9 @@ export function openStore(filename) {
       const requestHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
       db.exec('BEGIN IMMEDIATE');
       try {
-        const existing = db.prepare('SELECT id, request_hash FROM tasks WHERE user_id = ? AND idempotency_key = ?').get(userId, key);
+        const existing = db.prepare('SELECT id, request_hash, model FROM tasks WHERE user_id = ? AND idempotency_key = ?').get(userId, key);
         if (existing) {
-          if (existing.request_hash !== requestHash) throw new Error('idempotency_conflict');
+          if (existing.request_hash !== requestHash || existing.model !== model) throw new Error('idempotency_conflict');
           db.exec('COMMIT');
           return { id: existing.id, existing: true };
         }

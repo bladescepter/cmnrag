@@ -26,21 +26,35 @@ process.on('unhandledRejection', (reason) => {
   process.exit(1);
 });
 const search = createTinyFishClient({ apiKey: process.env.PROOFREADING_TINYFISH_API_KEY });
-const runner = await createPiRunner({
-  rulesDir: process.env.PROOFREADING_RULES_DIR,
-  stateDir,
-  provider: process.env.PROOFREADING_MODEL_PROVIDER,
-  modelId: process.env.PROOFREADING_MODEL_ID,
-  thinkingLevel: process.env.PROOFREADING_THINKING_LEVEL,
-  apiKey: process.env.PROOFREADING_MODEL_API_KEY,
-  offlinePartial: process.env.PROOFREADING_ENABLE_OFFLINE_PARTIAL === '1',
-  logger: diagnostics,
-  search,
-});
+// 模型清单：PROOFREADING_MODELS="provider/model,provider/model"；未设置时回退单模型旧变量。
+// 各模型密钥：PROOFREADING_API_KEY_<大写 provider>（- 转 _）；旧变量仅供匹配的默认 provider 复用。
+const modelSpecs = (process.env.PROOFREADING_MODELS || `${process.env.PROOFREADING_MODEL_PROVIDER || ''}/${process.env.PROOFREADING_MODEL_ID || ''}`)
+  .split(',').map(spec => spec.trim()).filter(spec => /^[^/\s]+\/[^/\s]+$/.test(spec));
+const apiKeyFor = provider => process.env[`PROOFREADING_API_KEY_${provider.toUpperCase().replace(/-/g, '_')}`]
+  || (provider === process.env.PROOFREADING_MODEL_PROVIDER ? process.env.PROOFREADING_MODEL_API_KEY : undefined);
+const runners = {};
+for (const spec of modelSpecs) {
+  const [provider, modelId] = spec.split('/');
+  const apiKey = apiKeyFor(provider);
+  if (!apiKey) { diagnostics?.log('model_skipped', { model: spec, reason: 'missing_api_key' }); continue; }
+  const runner = await createPiRunner({
+    rulesDir: process.env.PROOFREADING_RULES_DIR,
+    stateDir,
+    provider, modelId,
+    thinkingLevel: process.env.PROOFREADING_THINKING_LEVEL,
+    apiKey,
+    offlinePartial: process.env.PROOFREADING_ENABLE_OFFLINE_PARTIAL === '1',
+    logger: diagnostics,
+    search,
+  });
+  if (runner.ready) runners[spec] = runner;
+  else diagnostics?.log('model_skipped', { model: spec, reason: 'not_in_catalog' });
+}
+if (!Object.keys(runners).length) throw new Error('no_model_ready');
 const store = openStore(join(stateDir, 'tasks.sqlite'));
 const service = createBackend({
-  store, runner, signingSecret: secret, logger: diagnostics,
+  store, runners, signingSecret: secret, logger: diagnostics,
 });
-diagnostics?.log('backend_start', { port, host, runner_ready: runner.ready, online: Boolean(search) });
-service.server.listen(port, host, () => { console.log(`Proofreading service listening on ${host}:${port}; runner ${runner.ready ? 'pi-skill-v1' : 'disabled'}`); service.kick(); });
+diagnostics?.log('backend_start', { port, host, models: Object.keys(runners), online: Boolean(search) });
+service.server.listen(port, host, () => { console.log(`Proofreading service listening on ${host}:${port}; models ${Object.keys(runners).join(', ')}`); service.kick(); });
 // Secrets, manuscript text, prompts and full model outputs must never be logged.

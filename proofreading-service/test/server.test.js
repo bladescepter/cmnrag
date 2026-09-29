@@ -115,16 +115,44 @@ test('an unlocatable model suggestion stays pending while valid issues remain av
 test('availability identifies offline-partial mode without starting a model task', async () => {
   const app = await setup({ ready: true, offlinePartial: true, run: async () => { throw new Error('must not run'); } });
   try {
-    assert.deepEqual(await (await app.request('/availability')).json(), { ready: true, execution: 'legacy', mode: 'offline-partial-test' });
+    assert.deepEqual(await (await app.request('/availability')).json(), { ready: true, execution: 'legacy', mode: 'offline-partial-test', models: { default: 'default', available: ['default'] } });
   } finally { await app.close(); }
   const online = await setup({ ready: true, offlinePartial: true, online: true, run: async () => { throw new Error('must not run'); } });
   try {
-    assert.deepEqual(await (await online.request('/availability')).json(), { ready: true, execution: 'legacy', mode: 'online-test' });
+    assert.deepEqual(await (await online.request('/availability')).json(), { ready: true, execution: 'legacy', mode: 'online-test', models: { default: 'default', available: ['default'] } });
   } finally { await online.close(); }
   const native = await setup({ ready: true, offlinePartial: true, online: true, execution: 'pi-skill-v1', run: async () => { throw new Error('must not run'); } });
   try {
-    assert.deepEqual(await (await native.request('/availability')).json(), { ready: true, execution: 'pi-skill-v1', mode: 'online-test' });
+    assert.deepEqual(await (await native.request('/availability')).json(), { ready: true, execution: 'pi-skill-v1', mode: 'online-test', models: { default: 'default', available: ['default'] } });
   } finally { await native.close(); }
+});
+
+test('multi-model: submissions route to the selected runner; unknown models are rejected', async () => {
+  const runs = [];
+  const makeRunner = model => ({ ready: true, model, ruleVersion: `rv-${model}`, execution: 'pi-skill-v1',
+    run: async () => { runs.push(model); return { format: 'pi-final-text-v1', text: `回答@${model}`, incomplete: false, usage: { calls: 1, totalTokens: 10, estimatedUsd: 0, available: true } }; } });
+  const store = openStore(':memory:');
+  const backend = createBackend({ store, runners: { 'xiaomi/mimo-v2.6-flash': makeRunner('xiaomi/mimo-v2.6-flash'), 'deepseek/deepseek-flash': makeRunner('deepseek/deepseek-flash') }, signingSecret: secret });
+  await new Promise(resolve => backend.server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${backend.server.address().port}/api/proofreading`;
+  const request = (path, options = {}) => fetch(base + path, { ...options, headers: { authorization: `Bearer ${signTestToken(1, secret)}`, ...options.headers } });
+  const submit = (data, key = randomUUID()) => request('/tasks', { method: 'POST', headers: { 'content-type': 'application/json', 'x-idempotency-key': key }, body: JSON.stringify(data) });
+  try {
+    const state = await (await request('/availability')).json();
+    assert.deepEqual(state.models, { default: 'xiaomi/mimo-v2.6-flash', available: ['xiaomi/mimo-v2.6-flash', 'deepseek/deepseek-flash'] });
+    assert.equal((await submit({ ...submission, model: 'evil/model' })).status, 400); // 只接受预配置清单内的模型
+    assert.equal((await submit({ ...submission, model: '__proto__' })).status, 400);
+    const key = randomUUID();
+    const first = await (await submit(submission, key)).json(); // 未选模型 → 默认
+    assert.equal((await submit({ ...submission, model: 'deepseek/deepseek-flash' }, key)).status, 409); // 同键切模型不能复用旧任务
+    const second = await (await submit({ ...submission, model: 'deepseek/deepseek-flash' })).json();
+    const poll = async id => { for (let n = 0; n < 40; n++) { const t = await (await request(`/tasks/${id}`)).json(); if (t.status === 'completed') return t; await new Promise(r => setTimeout(r, 10)); } throw new Error('timeout'); };
+    assert.equal((await poll(first.id)).model, 'xiaomi/mimo-v2.6-flash');
+    const deep = await poll(second.id);
+    assert.equal(deep.model, 'deepseek/deepseek-flash');
+    assert.equal(deep.result_text, '回答@deepseek/deepseek-flash');
+    assert.deepEqual(runs, ['xiaomi/mimo-v2.6-flash', 'deepseek/deepseek-flash']); // 各自路由到对应 runner
+  } finally { await new Promise(resolve => backend.server.close(resolve)); store.close(); }
 });
 
 test('native pi-final-text-v1 answers are stored verbatim; incomplete stays partial; failures fail; usage kept', async () => {

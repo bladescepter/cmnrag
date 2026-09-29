@@ -79,24 +79,37 @@ function validateVerified(verified) {
   });
 }
 
-/** runner is injected so protocol, ownership and queue can be tested without model credentials. */
-export function createBackend({ store, runner, signingSecret, logger = null }) {
+/** runner is injected so protocol, ownership and queue can be tested without model credentials.
+ * 单 runner（runner）或多 runner（runners，键为 "provider/model-id"）均可；多模型时提交可选 model，队列按任务路由。 */
+export function createBackend({ store, runner, runners, defaultModel, signingSecret, logger = null }) {
   if (typeof signingSecret !== 'string' || signingSecret.length < 32) throw new Error('signing_secret_required');
+  const pool = runners && typeof runners === 'object' && !Array.isArray(runners) && Object.keys(runners).length
+    ? runners : (runner ? { [runner.model || 'default']: runner } : {});
+  const readyRunners = Object.fromEntries(Object.entries(pool).filter(([, each]) => each.ready));
+  const defaultRunner = defaultModel && Object.hasOwn(readyRunners, defaultModel) ? readyRunners[defaultModel] : Object.values(readyRunners)[0];
+  const defaultRunnerId = Object.keys(readyRunners).find(id => readyRunners[id] === defaultRunner) || '';
   let running = false;
   let stopping = false;
   async function drain() {
-    if (running || stopping || !runner.ready) return;
+    if (running || stopping || !defaultRunner) return;
     running = true;
     try {
-      while (!stopping && runner.ready) {
+      while (!stopping && defaultRunner) {
         const next = store.queued()[0];
         if (!next) break;
         const task = store.detail(next.id, next.user_id);
+        const taskRunner = task?.model ? pool[task.model] : defaultRunner;
+        if (!taskRunner?.ready) {
+          // 配置中已移除的模型：任务无法执行，保留原文并标记失败。
+          store.update(next.id, { status: 'failed', note: '该任务所用模型已下线，请联系管理员确认可用模型。' });
+          logger?.log('task_failed', { task: next.id, error: 'model_unavailable', model: task?.model });
+          continue;
+        }
         const stages = [];
         store.update(next.id, { status: 'running' });
         logger?.log('queue_pick', { task: next.id, user: next.user_id });
         try {
-          const result = await runner.run(task, (name) => {
+          const result = await taskRunner.run(task, (name) => {
             stages.push({ name, status: 'done' });
             store.update(task.id, { stages });
             logger?.log('stage_done', { task: task.id, stage: name });
@@ -141,19 +154,23 @@ export function createBackend({ store, runner, signingSecret, logger = null }) {
     const url = new URL(req.url || '/', 'http://localhost');
     const path = url.pathname;
     if (url.search) return json(res, 404, { error: 'not_found' });
-    if (path === '/api/proofreading/availability' && req.method === 'GET') return json(res, runner.ready ? 200 : 503, { ready: Boolean(runner.ready), execution: runner.execution || 'legacy', mode: runner.online ? 'online-test' : runner.offlinePartial ? 'offline-partial-test' : 'unavailable' });
+    if (path === '/api/proofreading/availability' && req.method === 'GET') return json(res, defaultRunner ? 200 : 503, { ready: Boolean(defaultRunner), execution: defaultRunner?.execution || 'legacy', mode: defaultRunner?.online ? 'online-test' : defaultRunner?.offlinePartial ? 'offline-partial-test' : 'unavailable', models: { default: defaultRunnerId, available: Object.keys(readyRunners) } });
     if (path === '/api/proofreading/tasks' && req.method === 'GET') return json(res, 200, { items: store.list(userId) });
     if (path === '/api/proofreading/tasks' && req.method === 'POST') {
-      if (!runner.ready) return json(res, 503, { error: 'service_unavailable' });
+      if (!defaultRunner) return json(res, 503, { error: 'service_unavailable' });
       const key = req.headers['x-idempotency-key'];
       if (typeof key !== 'string' || !UUID.test(key)) return json(res, 400, { error: 'invalid_idempotency_key' });
       let body;
       try { body = await readJson(req); } catch (error) { return json(res, error.message === 'request_too_large' ? 413 : 400, { error: error.message }); }
       const input = validateInput(body);
       if (!input) return json(res, 400, { error: 'invalid_input' });
-      if (Number.isSafeInteger(runner.maxDraftChars) && input.content.length > runner.maxDraftChars) return json(res, 413, { error: 'draft_too_long_for_test' });
+      // 模型只能从预配置清单中选择；未指定时用默认模型，避免任意 provider/地址注入。
+      const selected = body.model === undefined ? defaultRunner
+        : typeof body.model === 'string' && Object.hasOwn(readyRunners, body.model) ? readyRunners[body.model] : null;
+      if (!selected) return json(res, 400, { error: 'invalid_model' });
+      if (Number.isSafeInteger(selected.maxDraftChars) && input.content.length > selected.maxDraftChars) return json(res, 413, { error: 'draft_too_long_for_test' });
       try {
-        const { id, pruned } = store.create(userId, key, input, runner.ruleVersion || '', runner.model || '');
+        const { id, pruned } = store.create(userId, key, input, selected.ruleVersion || '', selected.model || '');
         if (pruned?.length) logger?.log('task_pruned', { user: userId, pruned: pruned.length }); // IDs only; history beyond the retention window is deleted oldest-first.
         kick();
         return json(res, 202, { id });

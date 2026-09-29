@@ -32,6 +32,9 @@
 .proofreading-page .submit-form label { display: block; margin: var(--space-lg) 0 var(--space-xs); color: var(--color-ink-2); font-family: var(--font-mono); font-size: var(--text-xs); }
 .proofreading-page .submit-form input, .proofreading-page .submit-form textarea { display: block; width: 100%; min-height: 2.75rem; padding: var(--space-sm); color: var(--color-ink); background: var(--color-paper-2); border: var(--rule-hair) solid var(--color-rule); border-radius: var(--radius-none); }
 .proofreading-page .submit-form textarea { min-height: 18rem; resize: vertical; line-height: 1.85; }
+.proofreading-page .model-row:not([hidden]) { display: flex; align-items: center; gap: var(--space-sm); margin-top: var(--space-lg); }
+.proofreading-page .model-row label { margin: 0; white-space: nowrap; }
+.proofreading-page .model-row select { flex: 1; min-height: 2.75rem; padding: var(--space-xs) var(--space-sm); color: var(--color-ink); font-family: var(--font-mono); font-size: var(--text-xs); background: var(--color-paper-2); border: var(--rule-hair) solid var(--color-rule); border-radius: var(--radius-none); }
 
 .proofreading-page .form-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); margin-top: var(--space-lg); }
 .proofreading-page .form-actions span { color: var(--color-muted); font-family: var(--font-mono); font-size: var(--text-xs); }

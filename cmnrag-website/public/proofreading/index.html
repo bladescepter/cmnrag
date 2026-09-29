@@ -30,6 +30,7 @@
         <h2>提交稿件</h2>
         <p class="form-help">仅提交获准用于校对的内容。提交后保存原文版本，不自动修改原稿。</p>
         <label for="draft-content">稿件原文（标题在首行将自动识别）</label><textarea id="draft-content" name="content" rows="15" required placeholder="粘贴稿件全文"></textarea>
+        <div class="model-row" id="model-row" hidden><label for="model-select">校对模型</label><select id="model-select" aria-label="选择校对模型"></select></div>
         <div class="form-actions"><span id="character-count">0 字符</span><button type="submit" id="submit-button" disabled>提交校对</button></div>
       </form>
       <div id="task-view" hidden>

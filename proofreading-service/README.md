@@ -16,7 +16,7 @@ Node.js ≥22.19、Pi SDK 固定 0.87.1。**版本库不提交**真实稿件、A
 
 ## 本地开发（只用去敏稿件）
 
-`npm ci && npm test`。启动前由操作者在安全的运行环境提供 `PROOFREADING_SIGNING_SECRET`（至少 32 字符，与 Worker secret `PROOFREADING_SIGNING_SECRET` 相同）、`PROOFREADING_RULES_DIR`（**已审定、只读**技能包目录）、`PROOFREADING_STATE_DIR`、`PROOFREADING_MODEL_PROVIDER`、`PROOFREADING_MODEL_ID`、`PROOFREADING_MODEL_API_KEY`，可选 `PROOFREADING_THINKING_LEVEL`（未设置时用该版本 Pi 默认，不强制关闭）。模型标识必须是已在 Pi 中核实的精确提供商/ID；不能把讨论中的展示名称直接填入。后台只接受 `127.0.0.1` / `::1` 监听，默认 `127.0.0.1:8788`。
+`npm ci && npm test`。启动前由操作者在安全的运行环境提供 `PROOFREADING_SIGNING_SECRET`（至少 32 字符，与 Worker secret `PROOFREADING_SIGNING_SECRET` 相同）、`PROOFREADING_RULES_DIR`（**已审定、只读**技能包目录）、`PROOFREADING_STATE_DIR`、`PROOFREADING_MODEL_PROVIDER`、`PROOFREADING_MODEL_ID`、`PROOFREADING_MODEL_API_KEY`（单模型兼容），或 `PROOFREADING_MODELS=xiaomi/mimo-v2.6-flash,deepseek/deepseek-flash` 加各提供商密钥 `PROOFREADING_API_KEY_XIAOMI` / `PROOFREADING_API_KEY_DEEPSEEK`（与旧 `PROOFREADING_MODEL_PROVIDER` 相同的提供商可沿用旧 `PROOFREADING_MODEL_API_KEY`；未配置密钥的模型不展示；页面选模型后按任务入队，未选时使用清单首项），可选 `PROOFREADING_THINKING_LEVEL`（未设置时用该版本 Pi 默认，不强制关闭）。模型标识必须是已在 Pi 中核实的精确提供商/ID；不能把讨论中的展示名称直接填入。后台只接受 `127.0.0.1` / `::1` 监听，默认 `127.0.0.1:8788`。
 
 **默认不接受稿件**。仅限隔离环境下用去敏样本测试时，显式设置 `PROOFREADING_ENABLE_OFFLINE_PARTIAL=1`。本机网页试运行不设置每日篇数或 4000 字符的业务限制；每次提交仍须确认模型费用（原生工具循环可能产生多轮调用），HTTP 请求保留 200 KB 的传输保护上限。进程应使用专用低权限 OS 用户；状态目录仅该用户可读（0700），不可挂载用户个人 Pi 目录、仓库 `.env` 或其他项目。
 

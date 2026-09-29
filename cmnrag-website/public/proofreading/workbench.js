@@ -16,6 +16,13 @@ let ready = false;
 let submitting = false;
 let pendingKey = null;
 let requiresPaidConfirmation = false;
+// 已配置模型时提交携带页面所选模型；旧后台未提供清单时由后端用默认模型。
+function modelBody(content) {
+  const row = $("model-row");
+  if (!row || row.hidden) return { content };
+  return { content, model: $("model-select").value };
+}
+const modelLabels = { "deepseek/deepseek-flash": "DeepSeek V4.1 Flash（快）", "xiaomi/mimo-v2.6-flash": "MiMo V2.6 Flash（小米）" };
 
 function message(text) {
   $("page-message").textContent = text;
@@ -312,7 +319,7 @@ $("submit-form").addEventListener("submit", async (event) => {
   const key = pendingKey || crypto.randomUUID();
   pendingKey = key;
   try {
-    const task = await api("/tasks", { method: "POST", headers: { "content-type": "application/json", "x-idempotency-key": key }, body: JSON.stringify({ content }) });
+    const task = await api("/tasks", { method: "POST", headers: { "content-type": "application/json", "x-idempotency-key": key }, body: JSON.stringify(modelBody(content)) });
     if (!validId(task.id)) throw new Error("任务已提交，但未返回有效编号；请刷新稿件列表后查看，不要重复提交。");
     form.reset();
     pendingKey = null;
@@ -356,6 +363,19 @@ setInterval(() => {
     const state = await api("/availability");
     if (state.ready !== true) throw new Error("校对服务尚未接入，暂不能提交稿件。");
     setReady(true);
+    // 后端返回可用模型时显示选择器；只有一个模型时也展示当前选择，新增密钥后第二项自动出现。
+    const models = Array.isArray(state.models?.available) ? state.models.available.filter(id => typeof id === "string") : [];
+    if (models.length > 0) {
+      const select = $("model-select");
+      for (const id of models) {
+        const option = document.createElement("option");
+        option.value = id;
+        option.textContent = modelLabels[id] || id;
+        if (id === state.models.default) option.selected = true;
+        select.append(option);
+      }
+      $("model-row").hidden = false;
+    }
     requiresPaidConfirmation = state.mode === "offline-partial-test" || state.mode === "online-test";
     if (requiresPaidConfirmation) {
       const online = state.mode === "online-test";
