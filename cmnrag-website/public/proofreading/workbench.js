@@ -15,7 +15,6 @@ let requestEpoch = 0;
 let ready = false;
 let submitting = false;
 let pendingKey = null;
-let requiresPaidConfirmation = false;
 // 提交只用默认模型；后端 availability 仍返回清单，页面不再展示选择器。
 
 function message(text) {
@@ -319,7 +318,6 @@ $("submit-form").addEventListener("submit", async (event) => {
   const form = event.currentTarget;
   const content = $("draft-content").value;
   if (!content.trim()) { message("稿件原文不能为空。"); return; }
-  if (requiresPaidConfirmation && !window.confirm("Pi 将使用原版校对技能和工具完成任务，工具调用可能产生多轮模型用量。联网仅使用 TinyFish Search。确认稿件及技能资料已获准外传，并接受本次 API 费用？")) return;
   submitting = true;
   $("submit-button").disabled = true;
   message("");
@@ -372,9 +370,8 @@ setInterval(() => {
     if (state.ready !== true) throw new Error("校对服务尚未接入，暂不能提交稿件。");
     setReady(true);
     renderBalance(state.balance);
-    // 生产（online）与本机试运行（*-test）都在提交前确认费用；仅本机试运行改按钮文案。
-    requiresPaidConfirmation = ["online", "online-test", "offline-partial-test"].includes(state.mode);
-    if (state.mode !== "online") $("submit-button").textContent = "确认后试运行";
+    // 提交前不再弹确认；本机试运行模式仍改按钮文案以示区分。
+    if (state.mode !== "online" && state.mode !== "unavailable") $("submit-button").textContent = "确认后试运行";
     await refreshList();
     const id = new URLSearchParams(location.search).get("task");
     if (validId(id)) openTask(id, false); else setView("form");
