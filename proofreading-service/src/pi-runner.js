@@ -52,7 +52,9 @@ export async function createPiRunner({ rulesDir, stateDir, provider, modelId, ap
           await writeFile(file, snapshot[i], { mode: RULE_FILES[i].endsWith('.sh') ? 0o500 : 0o400 });
         }
         await mkdir(join(skillDir, 'drafts'), { mode: 0o700 });
-        const tools = await createSkillTools({ cwd: directory, skillDir, files: RULE_FILES, content: task.content, search, onStage,
+        // 原稿字节级真源：写草稿从此文件逐字复制，不凭上下文记忆重构（消除 draft_must_match_original 重试循环）。
+        await writeFile(join(skillDir, 'original.md'), task.content, { mode: 0o400 });
+        const tools = await createSkillTools({ cwd: directory, skillDir, files: RULE_FILES, originalFile: 'original.md', content: task.content, search, onStage,
           onReject: (tool, code) => logger?.log('tool_rejected', { task: task.id, tool, code }),
           onSearch: queries => logger?.log('search_queries', { task: task.id, queries }) });
         const skillPath = join(skillDir, 'SKILL.md');
@@ -95,7 +97,7 @@ export async function createPiRunner({ rulesDir, stateDir, provider, modelId, ap
         });
         onStage('Pi 已载入原版校对技能');
         // One task, one native Pi agent loop. /skill expansion is Pi's own implementation.
-        await session.prompt(`/skill:proofreading 请按技能校对以下稿件。先读取所要求的完整文件，再用 write 写入 drafts/draft.md，运行原版扫描；由你按技能完成全部校对，最后只交付技能规定的最终文本。\n\n<manuscript>\n${task.content}\n</manuscript>`);
+        await session.prompt(`/skill:proofreading 请按技能校对以下稿件。先读取所要求的完整文件；原稿已存为技能目录下的 original.md，写 drafts/draft.md 时请先读取该文件并逐字复制，不要凭记忆重构；随后运行原版扫描；由你按技能完成全部校对，最后只交付技能规定的最终文本。\n\n<manuscript>\n${task.content}\n</manuscript>`);
         if (fatalCode) throw new Error(fatalCode);
         if (lastAssistant?.stopReason === 'length') throw new Error('model_output_truncated');
         if (lastAssistant?.stopReason !== 'stop') throw new Error('model_call_failed');
@@ -108,7 +110,11 @@ export async function createPiRunner({ rulesDir, stateDir, provider, modelId, ap
       } catch (error) {
         const code = fatalCode || (SAFE_ERRORS.has(error?.message) ? error.message : 'model_call_failed');
         logger?.log('run_error', { task: task.id, error: code });
-        throw new Error(code);
+        // 失败也携带已累计用量与思考级别，供失败任务的成本与配置审计。
+        const failure = new Error(code);
+        failure.usage = { ...budget.snapshot(), available: usageAvailable };
+        failure.thinkingLevel = typeof session?.thinkingLevel === 'string' ? session.thinkingLevel : '';
+        throw failure;
       } finally {
         session?.dispose();
         // Only this run's private snapshot/workspace; never the source skill, other tasks or history.

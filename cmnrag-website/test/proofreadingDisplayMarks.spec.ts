@@ -70,6 +70,9 @@ describe("four-phase progress display", () => {
     const done = names => names.map(name => ({ name, status: "done" }));
     expect(currentProofreadingPhase(done(["Pi 已载入原版校对技能"]))).toBe(1);
     expect(currentProofreadingPhase(done(["Pi 已载入原版校对技能", "Pi 读取技能参考文件"]))).toBe(1);
+    // 参考文件读完即进入通读：不再等到写草稿才离开“读取资料中”。
+    expect(currentProofreadingPhase(done(["Pi 读取技能参考文件", "Pi 通读校对中"]))).toBe(2);
+    expect(currentProofreadingPhase(done(["Pi 读取原稿"]))).toBe(2);
     expect(currentProofreadingPhase(done(["Pi 读取技能参考文件", "Pi 写入本任务草稿", "Pi 执行关键词扫描"]))).toBe(2);
     expect(currentProofreadingPhase(done(["Pi 执行关键词扫描", "Pi 调用 TinyFish Search"]))).toBe(3);
     expect(currentProofreadingPhase(done(["Pi 调用 TinyFish Search", "Pi 会话已结束"]))).toBe(4);

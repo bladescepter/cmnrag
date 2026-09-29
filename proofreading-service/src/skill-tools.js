@@ -4,8 +4,9 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 // Reuse Pi's read/write/bash tools. Only their I/O boundary is restricted for a multi-user service.
+// originalFile: 任务启动器预先写入技能目录的原稿文件名（只读）。模型写草稿从此文件逐字复制，不凭上下文记忆重构——消除 draft_must_match_original 重试循环。
 // onReject: 工具调用被拒（路径越界、草稿不一致、命令不允许等）时上报（工具名+错误码），供诊断日志定位模型重试循环。
-export async function createSkillTools({ cwd, skillDir, files, content, search, onStage = () => {}, onSearch = () => {}, onReject = () => {} }) {
+export async function createSkillTools({ cwd, skillDir, files, content, search, originalFile = null, onStage = () => {}, onSearch = () => {}, onReject = () => {} }) {
   const sdk = await import('@earendil-works/pi-coding-agent');
   const require = createRequire(import.meta.resolve('@earendil-works/pi-coding-agent'));
   const { Type } = require('typebox');
@@ -13,7 +14,8 @@ export async function createSkillTools({ cwd, skillDir, files, content, search, 
   const draftsDir = join(skillDir, 'drafts');
   const drafts = new Set();
   const readLines = new Map();
-  let scanned = false, searched = false, searchFailed = false;
+  let scanned = false, searched = false, searchFailed = false, referencesAnnounced = false;
+  const originalPath = originalFile ? join(skillDir, originalFile) : null;
   const pathFor = path => {
     if (typeof path !== 'string' || path.includes('\0')) throw new Error('path_not_allowed');
     return path.startsWith('skill://proofreading/') ? resolve(skillDir, path.slice('skill://proofreading/'.length)) : resolve(cwd, path);
@@ -21,16 +23,17 @@ export async function createSkillTools({ cwd, skillDir, files, content, search, 
   const checkDraft = path => {
     if (dirname(path) !== draftsDir || !/^[\p{L}\p{N}_-]+\.md$/u.test(basename(path))) throw new Error('path_not_allowed');
   };
+  const readable = path => rules.has(path) || drafts.has(path) || path === originalPath;
   const read = sdk.createReadToolDefinition(cwd, { operations: {
-    access: async path => { if (!rules.has(path) && !drafts.has(path)) throw new Error('path_not_allowed'); },
-    readFile: async path => { if (!rules.has(path) && !drafts.has(path)) throw new Error('path_not_allowed'); return readFile(path); },
+    access: async path => { if (!readable(path)) throw new Error('path_not_allowed'); },
+    readFile: async path => { if (!readable(path)) throw new Error('path_not_allowed'); return readFile(path); },
     detectImageMimeType: async () => null,
   } });
   const readExecute = read.execute;
   read.execute = async (id, args, signal, update, ctx) => {
     const path = pathFor(args.path);
     const result = await readExecute(id, { ...args, path }, signal, update, ctx);
-    if (rules.has(path)) {
+    if (rules.has(path) || path === originalPath) {
       const total = (await readFile(path, 'utf8')).split('\n').length;
       const start = args.offset ? Math.max(0, args.offset - 1) : 0;
       const truncation = result.details?.truncation;
@@ -38,7 +41,16 @@ export async function createSkillTools({ cwd, skillDir, files, content, search, 
       const seen = readLines.get(path) || new Set();
       for (let i = start; i < start + length; i++) seen.add(i);
       readLines.set(path, seen);
-      onStage('Pi 读取技能参考文件');
+      if (path === originalPath) onStage('Pi 读取原稿');
+      else if (path.startsWith(join(skillDir, 'references/'))) onStage('Pi 读取技能参考文件');
+      // 参考文件全部读完后立即进入通读阶段，页面不再滞留“读取资料中”。
+      if (!referencesAnnounced) {
+        const complete = await Promise.all(files.filter(file => file.startsWith('references/')).map(async file => {
+          const rulePath = join(skillDir, file);
+          return (readLines.get(rulePath)?.size || 0) >= (await readFile(rulePath, 'utf8')).split('\n').length;
+        }));
+        if (complete.every(Boolean)) { referencesAnnounced = true; onStage('Pi 通读校对中'); }
+      }
     }
     return result;
   };

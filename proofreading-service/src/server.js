@@ -127,7 +127,9 @@ export function createBackend({ store, runner, signingSecret, logger = null }) {
         } catch (error) {
           // Never convert a failed model, search or anchor validation into “无意见”.
           logger?.log('task_failed', { task: task.id, error: error instanceof Error ? error.message : String(error) });
-          store.update(task.id, { status: 'failed', note: '校对未完成；请联系管理员核查任务记录。' });
+          store.update(task.id, { status: 'failed', note: '校对未完成；请联系管理员核查任务记录。',
+            ...(error?.usage && typeof error.usage === 'object' ? { usage: error.usage } : {}),
+            thinking_level: typeof error?.thinkingLevel === 'string' ? error.thinkingLevel : '' });
         }
       }
     } finally { running = false; }

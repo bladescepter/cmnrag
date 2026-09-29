@@ -133,6 +133,37 @@ test('tool rejections are reported with tool name and error code', async () => {
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('original.md is readable, staged separately, and enables verbatim draft copying', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'skill-tools-'));
+  try {
+    const cwd = join(root, 'workspace');
+    const skillDir = join(cwd, '.pi', 'skills', 'proofreading');
+    for (const [file, content] of Object.entries(rules)) {
+      await mkdir(join(skillDir, file, '..'), { recursive: true });
+      await writeFile(join(skillDir, file), content);
+    }
+    await mkdir(join(skillDir, 'drafts'));
+    await writeFile(join(skillDir, 'original.md'), draft); // 启动器预先写入的原稿真源
+    const stages = [];
+    const api = await createSkillTools({ cwd, skillDir, files: Object.keys(rules), originalFile: 'original.md', content: draft, search: null, onStage: name => stages.push(name) });
+    const byName = Object.fromEntries(api.tools.map(tool => [tool.name, tool]));
+    const run = (tool, args) => tool.execute('t', args, undefined, undefined, undefined);
+    // 读取原稿成功且有独立阶段事件。
+    const readOriginal = await run(byName.read, { path: base + 'original.md' });
+    assert.ok(JSON.stringify(readOriginal).includes(draft.slice(0, 4))); // 不含换行，避开 JSON 转义差异
+    assert.ok(stages.includes('Pi 读取原稿'));
+    // 从原稿复制的内容一次写入成功。
+    await run(byName.write, { path: base + 'drafts/draft.md', content: draft });
+    assert.ok(stages.includes('Pi 写入本任务草稿'));
+    // 参考文件未读时不会误发“通读校对中”。
+    assert.ok(!stages.includes('Pi 通读校对中'));
+    for (const file of Object.keys(rules).filter(f => f.startsWith('references/'))) {
+      await run(byName.read, { path: base + file });
+    }
+    assert.ok(stages.includes('Pi 通读校对中')); // 参考文件全部读完即进入通读
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('a fully executed flow is complete; search availability alone does not block it', async () => {
   const app = await setup({ async search() { return []; } });
   try {

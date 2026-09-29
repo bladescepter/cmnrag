@@ -136,7 +136,10 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
       runLog.push(task.id);
       if (runLog.length === 1) return { format: 'pi-final-text-v1', text: finalText, incomplete: false, thinkingLevel: 'medium', usage: { calls: 7, totalTokens: 40700, estimatedUsd: 0.06, available: true } };
       if (runLog.length === 2) return { format: 'pi-final-text-v1', text: '未全部完成的回答', incomplete: true, usage: { calls: 3, totalTokens: 100, estimatedUsd: 0, available: false } };
-      throw new Error('model_output_truncated');
+      const failure = new Error('model_output_truncated');
+      failure.usage = { calls: 13, totalTokens: 334444, estimatedUsd: 0.02, available: true };
+      failure.thinkingLevel = 'medium';
+      throw failure;
     },
   });
   try {
@@ -158,7 +161,10 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
     assert.equal(partial.usage.available, false); // 估算缺失不丢回答
 
     const third = await (await app.submit()).json();
-    assert.equal((await waitFor(path => app.request(path), third.id, 'failed')).result_text, '');
+    const failed = await waitFor(path => app.request(path), third.id, 'failed');
+    assert.equal(failed.result_text, '');
+    assert.equal(failed.thinking_level, 'medium'); // 失败也记录思考级别
+    assert.deepEqual(failed.usage, { calls: 13, totalTokens: 334444, estimatedUsd: 0.02, available: true }); // 失败也保留已累计用量
   } finally { await app.close(); }
 });
 
