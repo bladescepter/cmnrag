@@ -53,6 +53,7 @@ export async function createPiRunner({ rulesDir, stateDir, provider, modelId, ap
         }
         await mkdir(join(skillDir, 'drafts'), { mode: 0o700 });
         const tools = await createSkillTools({ cwd: directory, skillDir, files: RULE_FILES, content: task.content, search, onStage,
+          onReject: (tool, code) => logger?.log('tool_rejected', { task: task.id, tool, code }),
           onSearch: queries => logger?.log('search_queries', { task: task.id, queries }) });
         const skillPath = join(skillDir, 'SKILL.md');
         const resourceLoader = {

@@ -101,6 +101,38 @@ test('web_search wraps untrusted material, allows one grouped call, and reports 
   } finally { await offline.clean(); }
 });
 
+test('tool rejections are reported with tool name and error code', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'skill-tools-'));
+  try {
+    const cwd = join(root, 'workspace');
+    const skillDir = join(cwd, '.pi', 'skills', 'proofreading');
+    for (const [file, content] of Object.entries(rules)) {
+      await mkdir(join(skillDir, file, '..'), { recursive: true });
+      await writeFile(join(skillDir, file), content);
+    }
+    await mkdir(join(skillDir, 'drafts'));
+    const rejections = [];
+    const api = await createSkillTools({ cwd, skillDir, files: Object.keys(rules), content: draft, search: null, onReject: (tool, code) => rejections.push(`${tool}:${code}`) });
+    const byName = Object.fromEntries(api.tools.map(tool => [tool.name, tool]));
+    const run = async (tool, args) => {
+      try { await tool.execute('t', args, undefined, undefined, undefined); } catch { /* 拒绝即预期 */ }
+    };
+    await run(byName.write, { path: base + 'drafts/draft.md', content: draft + '多余' });
+    await run(byName.bash, { command: 'ls' });
+    await run(byName.read, { path: '/etc/passwd' });
+    await run(byName.web_search, { queries: ['a'], }); // search 不可用时也上报
+    await run(byName.web_search, { queries: [] }); // 无效搜索词
+    assert.ok(rejections.some(r => r.startsWith('write:draft_must_match_original')));
+    assert.ok(rejections.some(r => r.startsWith('bash:command_not_allowed')));
+    assert.ok(rejections.some(r => r.startsWith('read:path_not_allowed')));
+    assert.ok(rejections.some(r => r.startsWith('web_search:invalid_search_queries')));
+    // 正常成功调用不上报。
+    const before = rejections.length;
+    await run(byName.read, { path: base + 'SKILL.md' });
+    assert.equal(rejections.length, before);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('a fully executed flow is complete; search availability alone does not block it', async () => {
   const app = await setup({ async search() { return []; } });
   try {
