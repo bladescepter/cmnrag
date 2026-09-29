@@ -81,7 +81,7 @@ function validateVerified(verified) {
 
 /** runner is injected so protocol, ownership and queue can be tested without model credentials.
  * 单 runner（runner）或多 runner（runners，键为 "provider/model-id"）均可；多模型时提交可选 model，队列按任务路由。 */
-export function createBackend({ store, runner, runners, defaultModel, signingSecret, logger = null }) {
+export function createBackend({ store, runner, runners, defaultModel, balance = null, signingSecret, logger = null }) {
   if (typeof signingSecret !== 'string' || signingSecret.length < 32) throw new Error('signing_secret_required');
   const pool = runners && typeof runners === 'object' && !Array.isArray(runners) && Object.keys(runners).length
     ? runners : (runner ? { [runner.model || 'default']: runner } : {});
@@ -154,7 +154,7 @@ export function createBackend({ store, runner, runners, defaultModel, signingSec
     const url = new URL(req.url || '/', 'http://localhost');
     const path = url.pathname;
     if (url.search) return json(res, 404, { error: 'not_found' });
-    if (path === '/api/proofreading/availability' && req.method === 'GET') return json(res, defaultRunner ? 200 : 503, { ready: Boolean(defaultRunner), execution: defaultRunner?.execution || 'legacy', mode: defaultRunner?.online ? 'online-test' : defaultRunner?.offlinePartial ? 'offline-partial-test' : 'unavailable', models: { default: defaultRunnerId, available: Object.keys(readyRunners) } });
+    if (path === '/api/proofreading/availability' && req.method === 'GET') return json(res, defaultRunner ? 200 : 503, { ready: Boolean(defaultRunner), execution: defaultRunner?.execution || 'legacy', mode: defaultRunner?.online ? 'online-test' : defaultRunner?.offlinePartial ? 'offline-partial-test' : 'unavailable', models: { default: defaultRunnerId, available: Object.keys(readyRunners) }, ...(balance ? { balance: await balance.get() } : {}) });
     if (path === '/api/proofreading/tasks' && req.method === 'GET') return json(res, 200, { items: store.list(userId) });
     if (path === '/api/proofreading/tasks' && req.method === 'POST') {
       if (!defaultRunner) return json(res, 503, { error: 'service_unavailable' });

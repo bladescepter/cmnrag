@@ -5,6 +5,7 @@ import { createBackend } from './server.js';
 import { createPiRunner } from './pi-runner.js';
 import { createDiagnosticsLogger } from './diagnostics.js';
 import { createTinyFishClient } from './tinyfish.js';
+import { createBalanceProvider } from './balance.js';
 
 if (!process.env.PROOFREADING_STATE_DIR) throw new Error('PROOFREADING_STATE_DIR is required');
 const stateDir = resolve(process.env.PROOFREADING_STATE_DIR);
@@ -33,10 +34,12 @@ const modelSpecs = (process.env.PROOFREADING_MODELS || `${process.env.PROOFREADI
 const apiKeyFor = provider => process.env[`PROOFREADING_API_KEY_${provider.toUpperCase().replace(/-/g, '_')}`]
   || (provider === process.env.PROOFREADING_MODEL_PROVIDER ? process.env.PROOFREADING_MODEL_API_KEY : undefined);
 const runners = {};
+const providerKeys = {};
 for (const spec of modelSpecs) {
   const [provider, modelId] = spec.split('/');
   const apiKey = apiKeyFor(provider);
   if (!apiKey) { diagnostics?.log('model_skipped', { model: spec, reason: 'missing_api_key' }); continue; }
+  providerKeys[provider] = apiKey;
   const runner = await createPiRunner({
     rulesDir: process.env.PROOFREADING_RULES_DIR,
     stateDir,
@@ -51,9 +54,11 @@ for (const spec of modelSpecs) {
   else diagnostics?.log('model_skipped', { model: spec, reason: 'not_in_catalog' });
 }
 if (!Object.keys(runners).length) throw new Error('no_model_ready');
+// 余额展示：仅当配置了 DeepSeek 密钥时启用，结果经可用性接口中转给已登录用户。
+const balance = createBalanceProvider({ apiKey: providerKeys.deepseek, logger: diagnostics });
 const store = openStore(join(stateDir, 'tasks.sqlite'));
 const service = createBackend({
-  store, runners, signingSecret: secret, logger: diagnostics,
+  store, runners, balance, signingSecret: secret, logger: diagnostics,
 });
 diagnostics?.log('backend_start', { port, host, models: Object.keys(runners), online: Boolean(search) });
 service.server.listen(port, host, () => { console.log(`Proofreading service listening on ${host}:${port}; models ${Object.keys(runners).join(', ')}`); service.kick(); });

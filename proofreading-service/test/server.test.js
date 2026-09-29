@@ -155,6 +155,23 @@ test('multi-model: submissions route to the selected runner; unknown models are 
   } finally { await new Promise(resolve => backend.server.close(resolve)); store.close(); }
 });
 
+test('availability carries the relayed balance when configured; failures degrade to null', async () => {
+  const store = openStore(':memory:');
+  const runner = { ready: true, run: async () => { throw new Error('must not run'); } };
+  let balanceData = { total: '66.00', currency: 'CNY', is_available: true };
+  const app = createBackend({ store, runner, balance: { get: async () => balanceData }, signingSecret: secret });
+  await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${app.server.address().port}/api/proofreading`;
+  const headers = { authorization: `Bearer ${signTestToken(1, secret)}` };
+  try {
+    assert.deepEqual((await (await fetch(`${base}/availability`, { headers })).json()).balance, { total: '66.00', currency: 'CNY', is_available: true });
+    balanceData = null; // 供应商故障：余额降级为 null，可用性不受影响
+    const degraded = await (await fetch(`${base}/availability`, { headers })).json();
+    assert.equal(degraded.balance, null);
+    assert.equal(degraded.ready, true);
+  } finally { await new Promise(resolve => app.server.close(resolve)); store.close(); }
+});
+
 test('native pi-final-text-v1 answers are stored verbatim; incomplete stays partial; failures fail; usage kept', async () => {
   const finalText = '【文法】第2段：截止今天 -> 改为：截至今天\n（依据：典型错误案例）\n';
   const runLog = [];

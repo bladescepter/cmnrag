@@ -35,6 +35,18 @@ function node(tag, className, text) {
   return element;
 }
 function safeText(value) { return typeof value === "string" ? value : ""; }
+// 余额展示：后台中转的 DeepSeek 账户余额（全部已登录用户可见）；无数据时隐藏。
+function renderBalance(balance) {
+  const display = $("balance-display");
+  if (!display) return;
+  if (!balance || typeof balance.total !== "string") { display.hidden = true; display.textContent = ""; return; }
+  const currency = balance.currency === "CNY" ? "¥" : `${balance.currency} `;
+  display.hidden = false;
+  display.textContent = ` · 余额 ${currency}${Number(balance.total).toFixed(2)}${balance.is_available === false ? "（不可用）" : ""}`;
+}
+async function refreshBalance() {
+  try { renderBalance((await api("/availability")).balance); } catch { /* 余额不可用不影响使用 */ }
+}
 function validId(id) { return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id); }
 function setView(view) {
   $("submit-form").hidden = view !== "form";
@@ -267,7 +279,10 @@ async function refreshTask(id) {
     const task = await api(`/tasks/${id}`);
     if (epoch !== requestEpoch || currentId !== id) return;
     if (!task || task.id !== id || ![...activeStates, "completed", "partial", "failed", "cancelled"].includes(task.status)) throw new Error("任务返回的数据无效，请联系管理员。");
+    const wasActive = currentTask && activeStates.has(currentTask.status);
     renderTask(task);
+    // 任务结束后余额已变化：刷新一次余额显示。
+    if (wasActive && !activeStates.has(task.status)) void refreshBalance();
     message("");
   } catch (error) { if (epoch === requestEpoch) message(error.message); }
   finally { taskReads.delete(id); }
@@ -363,6 +378,7 @@ setInterval(() => {
     const state = await api("/availability");
     if (state.ready !== true) throw new Error("校对服务尚未接入，暂不能提交稿件。");
     setReady(true);
+    renderBalance(state.balance);
     // 后端返回可用模型时显示选择器；只有一个模型时也展示当前选择，新增密钥后第二项自动出现。
     const models = Array.isArray(state.models?.available) ? state.models.available.filter(id => typeof id === "string") : [];
     if (models.length > 0) {

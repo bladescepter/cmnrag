@@ -14,7 +14,7 @@
 
 ## 接口（全部需要登录）
 
-- `GET /api/proofreading/availability` → `{ "ready": true, "execution": "pi-skill-v1", "mode": "online-test", "models": { "default": "xiaomi/mimo-v2.6-flash", "available": ["xiaomi/mimo-v2.6-flash", "deepseek/deepseek-flash"] } }`；仅列已配置凭据且已就绪的模型。旧后台无 `execution` 字段（视为 `legacy`）。无就绪模型返回 503。
+- `GET /api/proofreading/availability` → `{ "ready": true, "execution": "pi-skill-v1", "mode": "online-test", "models": { … }, "balance": { "total": "88.00", "currency": "CNY", "is_available": true } }`；`balance` 为后台中转的 DeepSeek 账户余额（约 5 分钟缓存，任务结束后刷新；供应商故障时为 `null`，不影响 `ready`）。所有已登录用户可见；密钥仅存于后台。
 - `GET /api/proofreading/tasks` → `{ "items": [{ "id": "UUID", "title": "…", "status": "queued|running|completed|partial|failed|cancelled" }] }`；只列当前用户。**历史保留策略：每用户仅保留最近 5 篇**，新提交时从早到晚自动删除更早任务（排队/运行中不删）；被删任务再次访问返回 404。
 - `POST /api/proofreading/tasks`，JSON `{ "content": "…", "model": "deepseek/deepseek-flash" }`；`model` 可选，省略时采用 availability 的默认模型，指定时只接受 `models.available` 内的精确标识，否则返回 `invalid_model`。标题由服务端从首行/前缀提取；不要求稿件日期/拟刊日期。服务端保存不可变原文版本，幂等键按 **用户 + 键 + 请求内容 + 所选模型** 去重，返回 `{ "id": "UUID" }`。同键改稿或切换模型须拒绝；浏览器断线时不要重复提交扣费。
 - `GET /api/proofreading/tasks/:uuid`（新执行器）→
