@@ -282,32 +282,32 @@ test('unconfigured runner refuses submissions; browser test accepts repeated sub
   } finally { await app.close(); }
 });
 
-test('history retention keeps only the newest five tasks per user, never touching active tasks', () => {
+test('history retention keeps only the newest ten tasks per user, never touching active tasks', () => {
   const directory = mkdtempSync(join(tmpdir(), 'cmnrag-test-'));
   const filename = join(directory, 'test.sqlite');
   try {
     const store = openStore(filename);
     const ids = [];
-    for (let n = 0; n < 7; n++) {
+    for (let n = 0; n < 12; n++) {
       const created = store.create(1, `key-${n}`, { title: `稿${n}`, content: `第${n}篇正文` }, 'rule-hash', 'test/model');
       ids.push(created.id);
       store.update(created.id, { status: 'completed' }); // 排队中的新任务受保护；只有已结束的才会被裁剪
     }
-    assert.equal(store.list(1).length, 5); // 提交即裁剪：最早的 2 篇已从早到晚删除
+    assert.equal(store.list(1).length, 10); // 提交即裁剪：最早的 2 篇已从早到晚删除
     assert.equal(store.detail(ids[0], 1), undefined);
     assert.equal(store.detail(ids[1], 1), undefined);
-    assert.ok(store.detail(ids[6], 1));
+    assert.ok(store.detail(ids[11], 1));
     store.create(2, 'other', { title: '他人稿件', content: '他人正文' }, 'rule-hash', 'test/model');
     assert.equal(store.list(2).length, 1); // 保留策略按用户隔离，互不删除
-    const duplicate = store.create(1, 'key-6', { title: '稿6', content: '第6篇正文' }, 'rule-hash', 'test/model');
+    const duplicate = store.create(1, 'key-11', { title: '稿11', content: '第11篇正文' }, 'rule-hash', 'test/model');
     assert.equal(duplicate.existing, true);
     assert.equal(duplicate.pruned, undefined); // 幂等重提交不再触发删除
-    assert.equal(store.list(1).length, 5);
-    store.update(ids[5], { status: 'running' });
-    for (let n = 8; n <= 12; n++) store.create(1, `key-${n}`, { title: `稿${n}`, content: `第${n}篇正文` }, 'rule-hash', 'test/model');
-    assert.ok(store.detail(ids[5], 1)); // 排队/运行中的任务永不删除
-    assert.equal(store.detail(ids[6], 1), undefined);
-    assert.equal(store.list(1).length, 6); // 新 5 篇 + 受保护的活动任务
+    assert.equal(store.list(1).length, 10);
+    store.update(ids[10], { status: 'running' });
+    for (let n = 13; n <= 22; n++) store.create(1, `key-${n}`, { title: `稿${n}`, content: `第${n}篇正文` }, 'rule-hash', 'test/model');
+    assert.ok(store.detail(ids[10], 1)); // 排队/运行中的任务永不删除
+    assert.equal(store.detail(ids[11], 1), undefined);
+    assert.equal(store.list(1).length, 11); // 新 10 篇 + 受保护的活动任务
     store.close();
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

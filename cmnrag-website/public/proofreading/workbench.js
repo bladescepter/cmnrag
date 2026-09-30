@@ -58,7 +58,7 @@ function renderList(items) {
   // Compact history dropdown (shown on narrow screens instead of the horizontal strip).
   const select = $("task-select");
   select.replaceChildren();
-  const placeholder = node("option", "", entries.length ? "历史稿件（最近 5 篇）" : "暂无历史稿件");
+  const placeholder = node("option", "", entries.length ? "历史稿件（最近 10 篇）" : "暂无历史稿件");
   placeholder.value = "";
   placeholder.disabled = true;
   placeholder.selected = !entries.some(task => task.id === currentId);

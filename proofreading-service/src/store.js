@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createHash, randomUUID } from 'node:crypto';
 
 // History retention: each user keeps only the newest tasks; older ones are pruned on submit.
-export const HISTORY_LIMIT = 5;
+export const HISTORY_LIMIT = 10;
 
 export function openStore(filename) {
   const db = new DatabaseSync(filename);
