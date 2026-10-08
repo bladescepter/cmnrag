@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { locateOpinionMarks, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase } from "../public/proofreading/display-marks.js";
+import { locateOpinionMarks, buildMarkSegments, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase } from "../public/proofreading/display-marks.js";
 
 describe("completed proofreading display marks (never a verdict filter)", () => {
   it("numbers opinion lines and marks unique quotes in the skill's instructed format", () => {
@@ -35,14 +35,14 @@ describe("completed proofreading display marks (never a verdict filter)", () => 
     expect(opinion.spans.map(span => original.slice(span.start, span.end)))
       .toEqual(["省气象局于启动台风四级预警（海上）"]);
   });
-  it("keeps numbering opinions whose quotes are absent, repeated or overlapping, without guessing", () => {
+  it("keeps overlapping opinions while leaving absent or repeated quotes unmarked", () => {
     const original = "错字错字。这里有错误机构名。";
-    const answer = "【文法】第1段：“错字”；应改为“正确”。\n【准确】第1段：“编造片段”；应改为“正确”。\n" +
+    const answer = "【文法】第99段：“错字”；应改为“正确”。\n【准确】第99段：“编造片段”；应改为“正确”。\n" +
       "【准确】第1段：“错误机构名”；应改为“正确机构名”。\n【准确】第1段：“机构名”；应改为“正确机构名”。\n" +
       "待核实：这里有错误机构名\n搜索结果：错误机构名";
     const opinions = locateOpinionMarks(original, answer);
     expect(opinions.map(opinion => opinion.number)).toEqual([1, 2, 3, 4]);
-    expect(opinions.map(opinion => opinion.spans.length)).toEqual([0, 0, 1, 0]);
+    expect(opinions.map(opinion => opinion.spans.length)).toEqual([0, 0, 1, 1]);
     expect(original.slice(opinions[2].spans[0].start, opinions[2].spans[0].end)).toBe("错误机构名");
   });
   it("does not number or mark ordinary prose or a no-opinion answer", () => {
@@ -61,6 +61,33 @@ describe("completed proofreading display marks (never a verdict filter)", () => 
     const original = "🌤标题\n气象X金融";
     const [opinion] = locateOpinionMarks(original, "【文法】第2段：“气象X金融”；应改为“气象×金融”。");
     expect(opinion.spans).toEqual([{ start: original.indexOf("气象X金融"), end: original.length }]);
+  });
+});
+
+describe("overlapping display ranges", () => {
+  it("shares identical underlines and keeps multiple separately numbered badges", () => {
+    const opinions = locateOpinionMarks("错误机构名", '【准确】第1段：“错误机构名”；名称错误。\n【文法】第1段：“错误机构名”；表述错误。');
+    expect(opinions.map(opinion => opinion.spans.length)).toEqual([1, 1]);
+    const marks = opinions.flatMap(opinion => opinion.spans.map(span => ({ ...span, number: opinion.number })));
+    expect(buildMarkSegments(marks)).toEqual([{ start: 0, end: 5, numbers: [1, 2], endingNumbers: [1, 2] }]);
+  });
+  it("splits containing and crossing ranges without duplicating original text", () => {
+    expect(buildMarkSegments([
+      { start: 0, end: 6, number: 1 }, { start: 2, end: 4, number: 2 }, { start: 3, end: 8, number: 3 },
+    ])).toEqual([
+      { start: 0, end: 2, numbers: [1], endingNumbers: [] },
+      { start: 2, end: 3, numbers: [1, 2], endingNumbers: [] },
+      { start: 3, end: 4, numbers: [1, 2, 3], endingNumbers: [2] },
+      { start: 4, end: 6, numbers: [1, 3], endingNumbers: [1] },
+      { start: 6, end: 8, numbers: [3], endingNumbers: [3] },
+    ]);
+  });
+  it("deduplicates repeated fragments of one opinion, not independent opinions", () => {
+    const [opinion] = locateOpinionMarks("错误机构名", '【文法】第1段：“错误机构名”与“错误机构名”；修改。');
+    expect(opinion.spans).toEqual([{ start: 0, end: 5 }]);
+    expect(buildMarkSegments([])).toEqual([]);
+    expect(buildMarkSegments([{ start: 0, end: 2, number: 1 }, { start: 2, end: 4, number: 2 }]))
+      .toEqual([{ start: 0, end: 2, numbers: [1], endingNumbers: [1] }, { start: 2, end: 4, numbers: [2], endingNumbers: [2] }]);
   });
 });
 

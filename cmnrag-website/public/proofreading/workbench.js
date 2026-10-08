@@ -1,6 +1,6 @@
 /* The workbench renders only server state: no synthetic progress or sample findings. */
 import { verifyAnchor } from "./anchors.js";
-import { locateOpinionMarks, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase } from "./display-marks.js";
+import { locateOpinionMarks, validateDisplayMarks, buildMarkSegments, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase } from "./display-marks.js";
 import { requestJson } from "./request.js";
 const $ = (id) => document.getElementById(id);
 const api = requestJson;
@@ -97,35 +97,50 @@ function renderReview(task) {
   findings.replaceChildren();
   const complete = task.status === "completed" || task.status === "partial";
   if (task.result_format === "pi-final-text-v1") {
-    // Only AFTER completion: derive optional display marks from the final answer.
-    // Ambiguous/nonliteral quotes remain unmarked; this never changes the Pi answer.
-    // 意见行按顺序编号；划线携带同一编号；未定位的意见显式计数提示。
+    // Final opinions and their source locations are independent of quotation typography.
     const answer = safeText(task.result_text);
-    const opinions = task.status === "completed" ? locateOpinionMarks(content, answer) : [];
-    const marks = opinions.flatMap(opinion => opinion.spans.map(span => ({ ...span, number: opinion.number }))).sort((a, b) => a.start - b.start);
-    let base = 0, markIndex = 0;
+    const opinions = task.status !== "completed" ? [] : task.display_marks == null
+      ? locateOpinionMarks(content, answer)
+      : validateDisplayMarks(content, answer, task.display_marks) || locateOpinionMarks(content, answer, [], { requireLocations: true });
+    const marks = opinions.flatMap(opinion => opinion.spans.map(span => ({ ...span, number: opinion.number })));
+    const segments = buildMarkSegments(marks);
+    let base = 0, segmentIndex = 0;
+    const renderedNumbers = new Set();
     for (const text of paragraphs) {
       const paragraph = node("p", "source-paragraph");
+      const paragraphEnd = base + text.length;
       let cursor = 0;
-      while (markIndex < marks.length && marks[markIndex].start < base + text.length) {
-        const { start, end, number } = marks[markIndex++];
-        if (start < base || end > base + text.length) continue;
-        paragraph.append(document.createTextNode(text.slice(cursor, start - base)));
-        const mark = node("mark", "native-mark", text.slice(start - base, end - base));
-        mark.setAttribute("data-n", String(number));
-        mark.setAttribute("aria-label", `第 ${number} 条意见引文`);
+      while (segmentIndex < segments.length && segments[segmentIndex].end <= base) segmentIndex++;
+      for (let i = segmentIndex; i < segments.length && segments[i].start < paragraphEnd; i++) {
+        const segment = segments[i];
+        const start = Math.max(segment.start, base) - base;
+        const end = Math.min(segment.end, paragraphEnd) - base;
+        paragraph.append(document.createTextNode(text.slice(cursor, start)));
+        const mark = node("mark", "native-mark", text.slice(start, end));
+        mark.setAttribute("data-n", segment.numbers.join(" "));
+        mark.setAttribute("aria-label", `第 ${segment.numbers.join("、")} 条意见引文`);
+        if (marks.some(range => range.scope === "line" && range.start <= base + start && range.end >= base + end)) {
+          mark.setAttribute("title", "意见针对本行内容或需在本行增补；此处划出整行范围。");
+        }
+        if (segment.end <= paragraphEnd) for (const number of segment.endingNumbers) {
+          renderedNumbers.add(number);
+          const badge = node("span", "mark-number");
+          badge.setAttribute("data-n", String(number));
+          badge.setAttribute("aria-hidden", "true");
+          mark.append(badge);
+        }
         paragraph.append(mark);
-        cursor = end - base;
+        cursor = end;
       }
       paragraph.append(document.createTextNode(text.slice(cursor)));
       source.append(paragraph);
       base += text.length + 1; // Original paragraphs are split on the exact newline character.
     }
-    const locatedCount = opinions.filter(opinion => opinion.spans.length).length;
+    const locatedCount = opinions.filter(opinion => renderedNumbers.has(opinion.number)).length;
     const unlocatedCount = opinions.length - locatedCount;
-    const spanCount = marks.length;
+    const spanCount = new Set(marks.map(mark => `${mark.start}:${mark.end}`)).size;
     $("source-mark-count").textContent = opinions.length
-      ? `意见 ${opinions.length} 条 · 划线 ${spanCount} 处${unlocatedCount ? ` · ${unlocatedCount} 条未定位（引文与原文不一致）` : ""}`
+      ? `意见 ${opinions.length} 条 · 划线 ${spanCount} 处${unlocatedCount ? ` · ${unlocatedCount} 条未定位（需补充定位信息）` : ""}`
       : "只读 · 不自动改写";
     $("finding-count").textContent = "Pi 最终回答";
     // textContent + pre-wrap preserves every character without executing HTML or reconstructing opinions.
@@ -149,13 +164,15 @@ function renderReview(task) {
   const locations = paragraphs.map(() => []);
   const cards = new Map();
   const highlights = new Map();
-  for (const issue of issues) {
+  for (const [index, issue] of issues.entries()) {
     if (!issue || typeof issue !== "object" || typeof issue.id !== "string") continue;
+    const number = index + 1;
     const anchor = verifyAnchor(issue, task.version_id, paragraphs);
-    if (anchor) locations[anchor.index].push({ ...anchor, id: issue.id });
+    if (anchor) locations[anchor.index].push({ ...anchor, number });
     const card = node("article", "finding-card");
     card.id = `finding-${issue.id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
     card.tabIndex = 0;
+    card.append(node("span", "opinion-number", String(number)));
     card.append(node("span", "finding-type", categories[issue.category] || "待核对"));
     card.append(node("blockquote", "", safeText(issue.quote)));
     card.append(node("p", "", safeText(issue.reason)));
@@ -179,31 +196,43 @@ function renderReview(task) {
   }
   paragraphs.forEach((text, index) => {
     const paragraph = node("p", "source-paragraph");
-    const matches = locations[index].sort((a, b) => a.start - b.start || a.end - b.end);
+    const matches = buildMarkSegments(locations[index]);
     let cursor = 0;
     for (const match of matches) {
-      if (match.start < cursor) {
-        cards.get(match.id)?.append(node("p", "anchor-warning", "定位与另一条意见重叠，请人工核对。"));
-        continue;
-      }
       paragraph.append(document.createTextNode(text.slice(cursor, match.start)));
       const mark = node("mark", "source-mark", text.slice(match.start, match.end));
       mark.tabIndex = 0;
-      mark.setAttribute("aria-label", "查看对应校对意见");
-      mark.addEventListener("click", () => selectIssue(match.id));
-      mark.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectIssue(match.id); } });
+      mark.setAttribute("aria-label", `查看第 ${match.numbers.join("、")} 条校对意见`);
+      const firstId = issues[match.numbers[0] - 1].id;
+      mark.addEventListener("click", () => selectIssue(firstId));
+      mark.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectIssue(firstId); } });
       paragraph.append(mark);
-      highlights.set(match.id, mark);
+      for (const number of match.numbers) {
+        const id = issues[number - 1].id;
+        if (!highlights.has(id)) highlights.set(id, []);
+        highlights.get(id).push(mark);
+      }
+      for (const number of match.endingNumbers) {
+        const badge = node("span", "mark-number");
+        badge.setAttribute("data-n", String(number));
+        badge.setAttribute("role", "button");
+        badge.setAttribute("aria-label", `查看第 ${number} 条校对意见`);
+        badge.tabIndex = 0;
+        const select = event => { event.stopPropagation(); selectIssue(issues[number - 1].id); };
+        badge.addEventListener("click", select);
+        badge.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(event); } });
+        mark.append(badge);
+      }
       cursor = match.end;
     }
     paragraph.append(document.createTextNode(text.slice(cursor)));
     source.append(paragraph);
   });
   function selectIssue(id) {
-    for (const element of [...cards.values(), ...highlights.values()]) element.classList.remove("active");
+    for (const element of [...cards.values(), ...[...highlights.values()].flat()]) element.classList.remove("active");
     cards.get(id)?.classList.add("active");
-    highlights.get(id)?.classList.add("active");
-    (highlights.get(id) || cards.get(id))?.scrollIntoView({ behavior: "smooth", block: "center" });
+    for (const mark of highlights.get(id) || []) mark.classList.add("active");
+    (highlights.get(id)?.[0] || cards.get(id))?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
   $("finding-count").textContent = complete ? `${issues.length} 条意见` : "待校对完成";
   if (!issues.length) findings.append(node("p", "empty-note", task.status === "completed" ? "无意见" : task.status === "partial" ? "部分核查未完成，不能认定全文无错。" : "校对中，尚无结果。"));
@@ -251,14 +280,18 @@ function renderTask(task) {
   }
   // 计时独立于 aria-live 的阶段区，避免每秒播报一次。
   const elapsed = $("task-elapsed");
-  const duration = activeStates.has(task.status)
+  const duration = task.status === "queued"
     ? formatDuration(task.created_at, new Date().toISOString())
-    : (task.status === "completed" || task.status === "partial")
-      ? formatDuration(task.created_at, task.updated_at)
-      : null;
+    : task.status === "running"
+      ? formatDuration(task.started_at, new Date().toISOString())
+      : (task.status === "completed" || task.status === "partial")
+        ? formatDuration(task.started_at, task.finished_at)
+        : null;
   elapsed.hidden = duration === null;
-  elapsed.textContent = duration === null ? "" : `${task.status === "queued" ? "已等待" : task.status === "running" ? "已持续" : "任务总用时"} ${duration}`;
-  if (task.status === "partial") progress.append(node("p", "task-note", task.result_format === "pi-final-text-v1" ? "技能执行未全部完成；以下保留 Pi 最终回答，不代表校对通过。" : "校对尚未全部完成，当前仅列已确认错误。"));
+  elapsed.textContent = duration === null ? "" : `${task.status === "queued" ? "已等待" : task.status === "running" ? "已校对" : "校对用时"} ${duration}`;
+  if (task.status === "partial") progress.append(node("p", "task-note", task.location_status === "incomplete"
+    ? "原文定位未完成；已保留校对意见，请联系管理员核查定位信息。"
+    : task.result_format === "pi-final-text-v1" ? "技能执行未全部完成；以下保留 Pi 最终回答，不代表校对通过。" : "校对尚未全部完成，当前仅列已确认错误。"));
   if (task.status === "failed" || task.status === "cancelled") progress.append(node("p", "task-note", "任务未完成，不能视为无意见。"));
   renderReview(task);
   setView("task");
@@ -346,12 +379,13 @@ setInterval(() => {
     refreshList().catch(() => {});
   }
 }, 3000);
-// 已持续时长每秒本地刷新，不产生网络请求。
+// 已校对时长每秒本地刷新，不产生网络请求。
 setInterval(() => {
-  if (!currentTask || !activeStates.has(currentTask.status) || !currentTask.created_at) return;
+  if (!currentTask || !activeStates.has(currentTask.status)) return;
   const elapsed = $("task-elapsed");
-  const text = formatDuration(currentTask.created_at, new Date().toISOString());
-  if (text && !elapsed.hidden) elapsed.textContent = `${currentTask.status === "queued" ? "已等待" : "已持续"} ${text}`;
+  const start = currentTask.status === "queued" ? currentTask.created_at : currentTask.started_at;
+  const text = formatDuration(start, new Date().toISOString());
+  if (text && !elapsed.hidden) elapsed.textContent = `${currentTask.status === "queued" ? "已等待" : "已校对"} ${text}`;
 }, 1000);
 (async function init() {
   try {

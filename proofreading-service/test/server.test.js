@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { locateOpinionMarks } from '../../cmnrag-website/public/proofreading/display-marks.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -61,6 +62,48 @@ test('submission derives title server-side; result comes only from runner', asyn
     assert.equal(done.draft_date, undefined);
     assert.equal(done.publication_date, undefined);
   } finally { await app.close(); }
+});
+
+test('multiple independent opinions on the same structured anchor remain available with unique ids', async () => {
+  const app = await setup({ ready: true, run: async () => ({
+    issues: ['名称有误', '表达有误'].map(reason => ({ quote: '第一段', category: 'grammar', reason, suggestion: '修改',
+      anchor: { paragraph_id: 'p0', start: 0, end: 3 } })), unverified: [], verified: [],
+  }) });
+  try {
+    const { id } = await (await app.submit()).json();
+    const done = await waitFor(path => app.request(path), id, 'completed');
+    assert.deepEqual(done.issues.map(issue => issue.id), ['p0-0-3', 'p0-0-3-2']);
+    assert.deepEqual(done.issues.map(issue => issue.reason), ['名称有误', '表达有误']);
+    assert.deepEqual(done.issues[0].anchor, done.issues[1].anchor);
+  } finally { await app.close(); }
+});
+
+test('queued tasks have no execution start until the runner picks them up', async () => {
+  const releases = [];
+  const app = await setup({ ready: true, run: () => new Promise(resolve => { releases.push(resolve); }) });
+  try {
+    const first = await (await app.submit()).json();
+    const running = await waitFor(path => app.request(path), first.id, 'running');
+    assert.ok(Number.isFinite(Date.parse(running.started_at)));
+    assert.equal(running.finished_at, null);
+    const second = await (await app.submit()).json();
+    const queued = await waitFor(path => app.request(path), second.id, 'queued');
+    assert.equal(queued.started_at, null);
+    assert.equal(queued.finished_at, null);
+    await new Promise(resolve => setTimeout(resolve, 30));
+    releases[0]({ issues: [], unverified: [], verified: [] });
+    const picked = await waitFor(path => app.request(path), second.id, 'running');
+    assert.ok(Date.parse(picked.started_at) > Date.parse(queued.created_at));
+    assert.equal(picked.finished_at, null);
+    releases[1]({ issues: [], unverified: [], verified: [] });
+    const done = await waitFor(path => app.request(path), second.id, 'completed');
+    assert.equal(done.started_at, picked.started_at);
+    assert.ok(Date.parse(done.finished_at) >= Date.parse(done.started_at));
+  } finally {
+    for (const release of releases) release({ issues: [], unverified: [], verified: [] });
+    await app.backend.drain();
+    await app.close();
+  }
 });
 
 test('extractTitle picks the first line when heading-like, falls back to a prefix', () => {
@@ -198,7 +241,9 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
     assert.equal(done.thinking_level, 'medium'); // 实际思考级别随任务入库，供对照实验与审计。
     assert.equal(done.result_text, finalText); // 逐字保存，含换行
     assert.ok(Number.isFinite(Date.parse(done.created_at)));
-    assert.ok(Date.parse(done.updated_at) >= Date.parse(done.created_at)); // 前端据此显示已持续/用时
+    assert.ok(Date.parse(done.updated_at) >= Date.parse(done.created_at));
+    assert.ok(Number.isFinite(Date.parse(done.started_at)));
+    assert.ok(Date.parse(done.finished_at) >= Date.parse(done.started_at));
     assert.deepEqual(done.usage, { calls: 7, totalTokens: 40700, estimatedUsd: 0.06, available: true });
     assert.deepEqual(done.issues, []); // 新执行器不生成结构化列表
     assert.equal((await app.request(`/tasks/${first.id}`, 2)).status, 404); // 跨用户仍隔离
@@ -214,6 +259,47 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
     assert.equal(failed.result_text, '');
     assert.equal(failed.thinking_level, 'medium'); // 失败也记录思考级别
     assert.deepEqual(failed.usage, { calls: 13, totalTokens: 334444, estimatedUsd: 0.02, available: true }); // 失败也保留已累计用量
+  } finally { await app.close(); }
+});
+
+test('native display locations are stored separately, missing coverage stays partial, and old tasks are backfilled', async () => {
+  const content = '风从海上来\n—泉州气象科普进村入户“赶路”记\n老黄说。';
+  const text = '【文法】副标题：“—泉州气象科普进村入户‘赶路’记”；修改。\n【准确】第3段：“老黄缺少完整姓名”；补充姓名。';
+  let calls = 0;
+  const app = await setup({ ready: true, execution: 'pi-skill-v1', run: async () => {
+    calls++;
+    return { format: 'pi-final-text-v1', text, incomplete: false, displayMarks: calls === 1
+      ? locateOpinionMarks(content, text, [{ number: 1, lines: [2] }, { number: 2, lines: [3] }], { requireLocations: true })
+      : [{ number: 1, spans: [{ start: 0, end: 2 }] }, { number: 2, spans: [] }] };
+  } });
+  try {
+    const first = await (await app.submit(1, randomUUID(), { content })).json();
+    const done = await waitFor(path => app.request(path), first.id, 'completed');
+    assert.equal(done.result_text, text);
+    assert.equal(done.location_status, 'complete');
+    assert.equal(done.display_marks.length, 2);
+    assert.equal(done.display_marks[1].spans[0].scope, 'line');
+    assert.equal((await app.request(`/tasks/${first.id}`, 2)).status, 404);
+    const second = await (await app.submit(1, randomUUID(), { content })).json();
+    const partial = await waitFor(path => app.request(path), second.id, 'partial');
+    assert.equal(partial.result_text, text);
+    assert.equal(partial.location_status, 'incomplete');
+    assert.match(partial.note, /定位未完成/);
+    const old = app.store.create(1, randomUUID(), { title: '旧任务', content });
+    app.store.update(old.id, { status: 'completed', result_format: 'pi-final-text-v1', result_text: text });
+    assert.equal(app.store.detail(old.id, 1).display_marks, null);
+    const historical = await (await app.request(`/tasks/${old.id}`)).json();
+    assert.equal(historical.location_status, 'complete');
+    assert.equal(historical.result_text, text);
+    assert.deepEqual(app.store.detail(old.id, 1).display_marks, historical.display_marks);
+    await app.request(`/tasks/${old.id}`);
+    const unresolvedOld = app.store.create(1, randomUUID(), { title: '无位置的旧任务', content });
+    app.store.update(unresolvedOld.id, { status: 'completed', result_format: 'pi-final-text-v1', result_text: '【准确】第99段：“无法确认位置”；核对。' });
+    const unresolvedHistory = await (await app.request(`/tasks/${unresolvedOld.id}`)).json();
+    assert.equal(unresolvedHistory.status, 'partial');
+    assert.equal(unresolvedHistory.location_status, 'incomplete');
+    assert.match(unresolvedHistory.note, /定位未完成/);
+    assert.equal(calls, 2); // Reading or backfilling old results never invokes proofreading.
   } finally { await app.close(); }
 });
 

@@ -2,11 +2,14 @@
 # 端口不发布到宿主公网，仅 Docker 内网（hermes-net）可达；公网一律经 Caddy TLS 反代。
 FROM node:22-slim
 
-WORKDIR /app
+WORKDIR /app/proofreading-service
 ENV NODE_ENV=production
-COPY package.json package-lock.json ./
+# Build from the repository root: docker build -f proofreading-service/Dockerfile .
+COPY proofreading-service/package.json proofreading-service/package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
-COPY src ./src
+COPY proofreading-service/src ./src
+# Browser and backend use the same location resolver.
+COPY cmnrag-website/public/proofreading/display-marks.js /app/cmnrag-website/public/proofreading/display-marks.js
 
 # 生产运行参数（可在 docker run/compose 覆盖）：
 #   PROOFREADING_HOST=0.0.0.0  PROOFREADING_PORT=8788

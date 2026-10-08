@@ -1,0 +1,12 @@
+# Root build context for proofreading-service/Dockerfile. Send only runtime source and manifests.
+**
+!proofreading-service/
+!proofreading-service/Dockerfile
+!proofreading-service/package.json
+!proofreading-service/package-lock.json
+!proofreading-service/src/
+!proofreading-service/src/**
+!cmnrag-website/
+!cmnrag-website/public/
+!cmnrag-website/public/proofreading/
+!cmnrag-website/public/proofreading/display-marks.js

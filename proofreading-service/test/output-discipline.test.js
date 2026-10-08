@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { applyVerdicts } from '../src/verification.js';
 import { locate } from '../src/pi-runner.js';
-import { locateOpinionMarks, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase } from '../../cmnrag-website/public/proofreading/display-marks.js';
+import { locateOpinionMarks, buildMarkSegments, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase } from '../../cmnrag-website/public/proofreading/display-marks.js';
 
 const source = { url: 'https://authority.example/news', title: '权威原文', snippet: '正式名称：正确机构名称。' };
 test('fact judgments publish only proven, anchored errors; correct and uncertain facts stay internal', () => {
@@ -40,7 +40,7 @@ test('workbench does not render search results, correct facts or pending lists, 
   };
   const script = readFileSync(new URL('../../cmnrag-website/public/proofreading/workbench.js', import.meta.url), 'utf8')
     .replace(/^import .*;\n/gm, '').split('async function refreshTask(id)')[0];
-  const context = { document, URL, requestJson: () => {}, verifyAnchor: () => ({ index: 0, start: 0, end: 2 }), task: {
+  const context = { document, URL, requestJson: () => {}, buildMarkSegments, verifyAnchor: () => ({ index: 0, start: 0, end: 2 }), task: {
     status: 'partial', content: '错字', issues: [{ id: 'i1', quote: '错字', category: 'grammar', reason: '明确错误', suggestion: '改字' }],
     unverified: ['不应展示待核实事项'], verified: [{ text: '不应展示正确项' }],
     sources: [{ ...source, title: '不应展示搜索结果' }], stages: [{ name: '不应展示搜索统计', status: 'done' }], note: '不应展示旧版核查清单说明',
@@ -103,7 +103,7 @@ test('native pi answers render verbatim as text without executing HTML or droppi
   };
   const script = readFileSync(new URL('../../cmnrag-website/public/proofreading/workbench.js', import.meta.url), 'utf8')
     .replace(/^import .*;\n/gm, '').split('async function refreshTask(id)')[0];
-  const context = { document, URL, requestJson: () => {}, verifyAnchor: () => ({ index: 0, start: 0, end: 2 }), locateOpinionMarks, OPINION_LINE, task: {
+  const context = { document, URL, requestJson: () => {}, verifyAnchor: () => ({ index: 0, start: 0, end: 2 }), locateOpinionMarks, buildMarkSegments, OPINION_LINE, task: {
     status: 'partial', content: '第一段\n截止今天。', result_format: 'pi-final-text-v1',
     result_text: '【文法】第2段：截止今天 → 改为：截至今天\n<img src=x onerror=alert(1)>不在任何标签内执行\n<script>bad()</script>\n【口径】末行意见\n',
     stages: [{ name: 'Pi 读取技能参考文件', status: 'done' }], note: '技能执行未全部完成；保留 Pi 最终回答，不代表校对通过。',
@@ -159,8 +159,9 @@ test('running progress shows four abstract phases, a spinner and elapsed time wi
     .replace(/^import .*;\n/gm, '').split('async function refreshTask(id)')[0];
   const start = new Date(Date.now() - 70_000).toISOString();
   const context = { document, URL, requestJson: () => {}, verifyAnchor: () => null,
-    locateOpinionMarks, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase,
-    task: { status: 'running', title: '测试', model: '测试模型', content: '标题', created_at: start,
+    locateOpinionMarks, buildMarkSegments, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase,
+    task: { status: 'running', title: '测试', model: '测试模型', content: '标题',
+      created_at: new Date(Date.parse(start) - 600_000).toISOString(), started_at: start,
       stages: [{ name: 'Pi 已载入原版校对技能', status: 'done' }], issues: [] } };
   runInNewContext(script + '\nrenderTask(task);', context);
   const progress = elements.get('task-progress');
@@ -168,15 +169,20 @@ test('running progress shows four abstract phases, a spinner and elapsed time wi
   assert.deepEqual(steps.map(step => step.className), ['phase active', 'phase', 'phase', 'phase']);
   assert.ok(steps[0].children.some(el => el.className === 'phase-spinner'));
   assert.ok(!progress.text().includes('Pi 已载入原版校对技能'));
-  assert.match(elements.get('task-elapsed').textContent, /^已持续 1 分/);
+  assert.match(elements.get('task-elapsed').textContent, /^已校对 1 分/);
   assert.equal(elements.get('task-elapsed').hidden, false);
   context.task = { ...context.task, stages: [{ name: 'Pi 调用 TinyFish Search', status: 'done' }] };
   runInNewContext('renderTask(task);', context);
   assert.deepEqual(progress.children[0].children.map(step => step.className), ['phase done', 'phase done', 'phase active', 'phase']);
-  context.task = { ...context.task, status: 'completed', updated_at: new Date(Date.parse(start) + 90_000).toISOString() };
+  context.task = { ...context.task, status: 'completed', finished_at: new Date(Date.parse(start) + 90_000).toISOString(),
+    updated_at: new Date(Date.parse(start) + 900_000).toISOString() };
   runInNewContext('renderTask(task);', context);
   assert.equal(progress.children.length, 0);
-  assert.match(elements.get('task-elapsed').textContent, /^任务总用时 1 分 30 秒/);
+  assert.match(elements.get('task-elapsed').textContent, /^校对用时 1 分 30 秒/);
+  context.task = { ...context.task, started_at: null }; // 历史任务无开始时间，不冒充校对耗时。
+  runInNewContext('renderTask(task);', context);
+  assert.equal(elements.get('task-elapsed').hidden, true);
+  assert.equal(elements.get('task-elapsed').textContent, '');
   context.task = { ...context.task, status: 'queued' };
   runInNewContext('renderTask(task);', context);
   assert.equal(progress.children.length, 0); // 排队不是“读取资料中”。

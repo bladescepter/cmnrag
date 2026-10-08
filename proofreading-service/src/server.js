@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { verifyWorkerToken } from './auth.js';
+import { locateOpinionMarks, validateDisplayMarks } from '../../cmnrag-website/public/proofreading/display-marks.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const categories = new Set(['political', 'grammar', 'policy', 'accuracy']);
@@ -40,16 +41,18 @@ async function readJson(req) {
 function validateIssues(task, issues) {
   if (!Array.isArray(issues) || issues.length > 100) throw new Error('invalid_results');
   const paragraphs = task.content.split('\n');
-  const ids = new Set();
+  const anchorCounts = new Map();
   const normalized = issues.map((issue) => {
     if (!issue || typeof issue !== 'object' || !categories.has(issue.category) || typeof issue.reason !== 'string' || !issue.reason.trim() || issue.reason.length > 3000 || typeof issue.quote !== 'string' || !issue.quote || typeof issue.suggestion !== 'string' || issue.suggestion.length > 2000) throw new Error('invalid_results');
     const { paragraph_id, start, end } = issue.anchor || {};
     if (typeof paragraph_id !== 'string' || !/^p\d+$/.test(paragraph_id) || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)) throw new Error('invalid_anchor');
     const line = Number(paragraph_id.slice(1));
     if (typeof paragraphs[line] !== 'string' || start < 0 || end <= start || paragraphs[line].slice(start, end) !== issue.quote) throw new Error('invalid_anchor');
-    const id = `${paragraph_id}-${start}-${end}`;
-    if (ids.has(id)) throw new Error('duplicate_anchor');
-    ids.add(id);
+    const anchorId = `${paragraph_id}-${start}-${end}`;
+    const count = (anchorCounts.get(anchorId) || 0) + 1;
+    anchorCounts.set(anchorId, count);
+    // 同一引文可以有多条独立意见，每条保留唯一 id，不能以锚点重复为由丢弃。
+    const id = count === 1 ? anchorId : `${anchorId}-${count}`;
     const evidence = Array.isArray(issue.evidence) ? httpsEvidence(issue.evidence) : [];
     return { id, category: issue.category, reason: issue.reason, quote: issue.quote, suggestion: issue.suggestion, anchor: { version_id: task.version_id, paragraph_id, start, end }, evidence };
   });
@@ -116,11 +119,15 @@ export function createBackend({ store, runner, runners, defaultModel, balance = 
           });
           if (result?.format === 'pi-final-text-v1') {
             if (typeof result.text !== 'string' || !result.text.trim()) throw new Error('invalid_results');
-            const status = result.incomplete ? 'partial' : 'completed';
-            // Store the actual final assistant text, unchanged; no JSON/anchor/semantic postprocessor.
+            const displayMarks = result.displayMarks ?? locateOpinionMarks(task.content, result.text);
+            const locationIncomplete = result.locationIncomplete || validateDisplayMarks(task.content, result.text, displayMarks) === null;
+            const status = result.incomplete || locationIncomplete ? 'partial' : 'completed';
+            // Opinions stay verbatim; display metadata is independent and must cover every number.
             store.update(task.id, { status, result_format: result.format, result_text: result.text, usage: result.usage || {},
+              display_marks: displayMarks, location_status: locationIncomplete ? 'incomplete' : 'complete',
               thinking_level: typeof result.thinkingLevel === 'string' ? result.thinkingLevel : '',
-              note: result.incomplete ? '技能执行未全部完成；保留 Pi 最终回答，不代表校对通过。' : '' });
+              note: locationIncomplete ? '原文定位未完成；已保留校对意见，请联系管理员核查定位信息。'
+                : result.incomplete ? '技能执行未全部完成；保留 Pi 最终回答，不代表校对通过。' : '' });
             logger?.log('task_done', { task: task.id, status, format: result.format, thinking_level: typeof result.thinkingLevel === 'string' ? result.thinkingLevel : null });
             continue;
           }
@@ -182,6 +189,15 @@ export function createBackend({ store, runner, runners, defaultModel, balance = 
     const match = path.match(/^\/api\/proofreading\/tasks\/([^/]+)$/);
     if (match && req.method === 'GET' && UUID.test(match[1])) {
       const task = store.detail(match[1], userId);
+      if (task?.status === 'completed' && task.result_format === 'pi-final-text-v1' && task.display_marks === null) {
+        // Old completed results get deterministic locations on read; no model call or re-proofreading.
+        const displayMarks = locateOpinionMarks(task.content, task.result_text);
+        const complete = validateDisplayMarks(task.content, task.result_text, displayMarks) !== null;
+        const fields = { display_marks: displayMarks, location_status: complete ? 'complete' : 'incomplete',
+          ...(complete ? {} : { status: 'partial', note: '原文定位未完成；已保留校对意见，请联系管理员核查定位信息。' }) };
+        store.update(task.id, fields);
+        Object.assign(task, fields);
+      }
       return task ? json(res, 200, task) : json(res, 404, { error: 'not_found' });
     }
     return json(res, 404, { error: 'not_found' });

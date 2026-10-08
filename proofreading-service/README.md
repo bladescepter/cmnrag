@@ -6,7 +6,7 @@ Node.js ≥22.19、Pi SDK 固定 0.87.1。**版本库不提交**真实稿件、A
 
 - 接受 Worker 签发的 60 秒 HS256 身份 JWT（严格校验签名、受众、有效期）；每个请求按用户 ID 查自己的任务，跨用户返回 404。
 - SQLite WAL 记录不可变稿件、稿件版本、技能包哈希、实际模型、阶段、最终回答原文（`result_text` / `result_format` / `usage` 新列，增量迁移，历史任务不改写）；每用户仅保留最近 10 篇任务，新提交时从早到晚自动删除更早历史（排队/运行中不删，删除事件记入诊断日志）；原子去重（用户 + 幂等键 + 内容）；单进程单任务队列，重启后未完成的运行中任务标失败，不假装可恢复。
-- 每稿创建一次原生 `createAgentSession`，以 `/skill:proofreading …` 提交，由 Pi 自主循环 `read` / `write` / `bash` / `web_search` 工具完成技能：读取全部参考文件、写稿、运行原版扫描、四遍通读、必要搜索。**不再**有程序拼接的分遍 prompt、强制 JSON 回答、第五次 verdict、程序生成搜索词或锚点过滤。（参考文件预注入首条 prompt 的方案已实测回退：模型仍按技能第零步重读文件，反而引发行为紊乱，同稿耗时 2.5 倍、token 3.3 倍；思考级别 `low` 同样实测回退：18 分钟未完成流程，慢于 medium 基线。）启动器把原稿预先写入技能目录 `original.md`（只读），模型写草稿从该文件逐字复制而非凭记忆重构，消除 `draft_must_match_original` 重试循环（实测该循环是多次“死区”的主因）；参考文件全部读完后发“Pi 通读校对中”阶段事件，页面不再滞留“读取资料中”。实际使用的思考级别随任务入库并写入诊断日志（失败任务也保留已累计用量）；工具调用被拒时记录 `tool_rejected`（工具名+错误码），用于定位模型重试循环。
+- 每稿创建一次原生 `createAgentSession`，以 `/skill:proofreading …` 提交，由 Pi 自主循环 `read` / `write` / `bash` / `web_search` 工具完成技能：读取全部参考文件、写稿、运行原版扫描、四遍通读、必要搜索。**不再**有程序拼接的分遍 prompt、强制 JSON 校对回答、第五次 verdict、程序生成搜索词或意见锚点过滤。最终生成附带独立的原稿行号定位块，意见正文原样保存，定位范围另存；程序处理引号嵌套与样式差异，无法缩小片段时划出指定原稿行。正常路径不增加模型调用；缺少有效行号时最多在同一会话补一次定位（关闭所有工具），仍不完整则保留意见并标记 `partial`。（参考文件预注入首条 prompt 的方案已实测回退：模型仍按技能第零步重读文件，反而引发行为紊乱，同稿耗时 2.5 倍、token 3.3 倍；思考级别 `low` 同样实测回退：18 分钟未完成流程，慢于 medium 基线。）启动器把原稿预先写入技能目录 `original.md`（只读），模型写草稿从该文件逐字复制而非凭记忆重构，消除 `draft_must_match_original` 重试循环（实测该循环是多次“死区”的主因）；参考文件全部读完后发“Pi 通读校对中”阶段事件，页面不再滞留“读取资料中”。实际使用的思考级别随任务入库并写入诊断日志（失败任务也保留已累计用量）；工具调用被拒时记录 `tool_rejected`（工具名+错误码），用于定位模型重试循环。
 - Pi 使用**显式**模型、独立凭据路径、内存会话及资源加载器，不发现宿主机个人技能、扩展或用户配置。最终回答取 assistant 文本块并逐字保存（含换行）；所需参考文件未完整读取、未成功扫描或已请求搜索失败时任务为 `partial`，保留回答。
 - 工具最小权限：`read` 只读本任务规则快照与草稿；`write` 只能在本任务 `drafts/` 写入与原稿逐字一致的 `.md`；`bash` 只解析简单 argv，仅允许原版扫描脚本与本任务草稿 `rm`，不交给 shell，无 Key 环境；`web_search` 仅 TinyFish Search，一次合并查询，材料包一层不可信声明后交 Pi 自行判断。Search 不可用或请求失败标 incomplete，不冒充完成。
 - 未配置 TinyFish 时仍可提交；Pi 请求搜索才产生 incomplete，不自动产生“部分核查未完成”结论。
@@ -50,7 +50,7 @@ npm run dev:web
 
 部署目标为腾讯云香港 VPS（Caddy + `hermes-net` 反代模式，公网入口 `https://proofreading.xiyuan.wiki`）。要点：
 
-1. **镜像**：`proofreading-service/Dockerfile`（Node 22 + Pi SDK 0.87.1）。构建不包含密钥、数据与测试；端口不发布到宿主公网，仅 `hermes-net` 内可达。
+1. **镜像**：`proofreading-service/Dockerfile`（Node 22 + Pi SDK 0.87.1）。从仓库根目录执行 `docker build -f proofreading-service/Dockerfile -t cmnrag-proofreading .`，以便后端与网页复用同一定位模块；配套 `Dockerfile.dockerignore` 只允许服务源码、依赖清单与网页定位模块进入构建上下文，不包含密钥、档案、任务数据与测试。端口不发布到宿主公网，仅 `hermes-net` 内可达。
 2. **监听**：容器内 `PROOFREADING_HOST=0.0.0.0`（`bind-host.js` 白名单允许回环/通配/RFC1918 私网；公网地址与域名一律拒绝）；公网流量只经 Caddy TLS 反代进入。
 3. **挂载**：`/app/data` 为持久卷（任务库与诊断日志）；`/app/rules` 为技能包 bind mount（宿主目录 rsync 更新）；密钥经挂载的 `.env`（600 权限）提供。
 4. **权威文件更新流程**（已确认）：本地修改独立仓库 `/home/blade/Projects/proofreading/.pi/skills/proofreading/` → 在该仓库 git 提交推送（审核留痕）→ rsync 到 VPS `/opt/data/proofreading/rules/` → 空闲期重启容器（确认无 running 任务）→ 抽查验证。新规则指纹写入 `backend_start` 诊断日志，便于核对线上版本。

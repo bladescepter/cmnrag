@@ -35,11 +35,15 @@ test('polling is single-flight, resumes after an initial read failure and clears
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(context.rendered.status, 'completed');
   assert.equal(elements.get('page-message').textContent, '');
-  context.createdAt = new Date(Date.now() - 90_000).toISOString();
-  runInNewContext('currentTask = { status: "running", created_at: createdAt };', context);
+  context.startedAt = new Date(Date.now() - 90_000).toISOString();
+  context.createdAt = new Date(Date.now() - 690_000).toISOString();
+  runInNewContext('currentTask = { status: "running", created_at: createdAt, started_at: startedAt };', context);
   document.getElementById('task-elapsed').hidden = false;
   tick();
-  assert.match(elements.get('task-elapsed').textContent, /^已持续 1 分/);
+  assert.match(elements.get('task-elapsed').textContent, /^已校对 1 分/);
+  runInNewContext('currentTask = { status: "queued", created_at: createdAt };', context);
+  tick();
+  assert.match(elements.get('task-elapsed').textContent, /^已等待 11 分/);
   assert.equal(calls, 2); // Local elapsed timer never makes network requests.
   runInNewContext('currentTask = { status: "completed" };', context);
   tick();

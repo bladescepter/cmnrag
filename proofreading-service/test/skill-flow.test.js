@@ -9,7 +9,7 @@ import { createPiRunner, RULE_FILES } from '../src/pi-runner.js';
 const draft = '虚构标题\n截止今天发布。';
 const finalText = '【文法】第2段：截止今天 -> 改为：截至今天\n（依据：典型错误案例）\n';
 const base = '.pi/skills/proofreading/';
-function respond(res, step, mode) {
+function respond(res, step, mode, repair = false) {
   const calls = [
     RULE_FILES.filter(f => f.startsWith('references/')).map((file, i) => ({ id: `read-${i}`, type: 'function', function: { name: 'read', arguments: JSON.stringify({ path: base + file, ...(mode === 'incomplete' ? { limit: 1 } : {}) }) } })),
     [{ id: 'write', type: 'function', function: { name: 'write', arguments: JSON.stringify({ path: base + 'drafts/draft.md', content: draft }) } }],
@@ -18,9 +18,13 @@ function respond(res, step, mode) {
     [{ id: 'search', type: 'function', function: { name: 'web_search', arguments: JSON.stringify({ queries: ['虚构机构 官方名称', '虚构活动 官方主题'] }) } }],
     [{ id: 'cleanup', type: 'function', function: { name: 'bash', arguments: JSON.stringify({ command: `rm ${base}drafts/*.md` }) } }],
   ];
-  const tools = calls[step];
-  const delta = tools ? { role: 'assistant', tool_calls: tools.map((call, index) => ({ index, ...call })) } : { role: 'assistant', content: mode === 'clean' ? '无意见' : finalText };
-  const finish = mode === 'truncated' && !tools ? 'length' : tools ? 'tool_calls' : 'stop';
+  const tools = repair ? (mode === 'repair-toolcall' ? [{ id: 'unexpected-read', type: 'function', function: { name: 'read', arguments: JSON.stringify({ path: base + 'original.md' }) } }] : null) : calls[step];
+  const footer = '\n<proofreading-locations>\n[{"number":1,"lines":[2]}]\n</proofreading-locations>';
+  const response = repair ? '<proofreading-locations>\n' + (mode === 'repair-invalid' ? '[{"number":1,"lines":[999]}]' : '[{"number":1,"lines":[2]}]') + '\n</proofreading-locations>'
+    : mode === 'clean' ? '无意见\n<proofreading-locations>\n[]\n</proofreading-locations>'
+    : mode.startsWith('repair-') ? finalText : finalText + footer;
+  const delta = tools ? { role: 'assistant', tool_calls: tools.map((call, index) => ({ index, ...call })) } : { role: 'assistant', content: response };
+  const finish = ((mode === 'truncated' && !tools) || (mode === 'repair-truncated' && repair)) ? 'length' : tools ? 'tool_calls' : 'stop';
   res.writeHead(200, { 'content-type': 'text/event-stream' });
   const chunk = { id: 'local', object: 'chat.completion.chunk', created: 1, model: 'fake-native' };
   res.write(`data: ${JSON.stringify({ ...chunk, choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`);
@@ -29,7 +33,7 @@ function respond(res, step, mode) {
   res.end('data: [DONE]\n\n');
 }
 
-test('one native Pi prompt drives tools and returns final text unchanged, without five-call/JSON/anchor pipelines', async () => {
+test('native skill returns verbatim opinions plus source lines in the same final generation; repairs are bounded', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'cmnrag-native-pi-'));
   const rulesDir = join(directory, 'rules');
   const stateDir = join(directory, 'state');
@@ -42,10 +46,13 @@ test('one native Pi prompt drives tools and returns final text unchanged, withou
       modelCalls++;
       const request = JSON.parse(body); requests.push(request);
       assert.equal(request.response_format, undefined);
-      assert.deepEqual(request.tools.map(t => t.function.name).sort(), ['bash', 'read', 'web_search', 'write']);
-      assert.equal(request.messages.filter(m => m.role === 'user').length, 1);
+      const repair = request.messages.filter(m => m.role === 'user').length === 2;
+      assert.deepEqual((request.tools || []).map(t => t.function.name).sort(), repair ? [] : ['bash', 'read', 'web_search', 'write']);
+      assert.equal(request.messages.filter(m => m.role === 'user').length, repair ? 2 : 1);
       assert.ok(JSON.stringify(request.messages).includes('测试原版技能'));
-      respond(res, request.messages.filter(m => m.role === 'assistant').length, mode);
+      assert.ok(JSON.stringify(request.messages).includes('L2\\t截止今天发布。'));
+      if (repair) assert.ok(JSON.stringify(request.messages).includes('已有校对意见不再修改或重新校对'));
+      respond(res, request.messages.filter(m => m.role === 'assistant').length, mode, repair);
     });
   });
   try {
@@ -75,6 +82,9 @@ test('one native Pi prompt drives tools and returns final text unchanged, withou
     assert.equal(result.text, finalText);
     assert.equal(result.format, 'pi-final-text-v1');
     assert.equal(result.incomplete, false);
+    assert.equal(result.locationIncomplete, false);
+    assert.equal(result.locationRepair, false);
+    assert.deepEqual(result.displayMarks, [{ number: 1, spans: [{ start: draft.indexOf('截止今天'), end: draft.indexOf('截止今天') + 4 }] }]);
     assert.equal(result.usage.calls, 7);
     assert.ok(result.usage.estimatedUsd > 0.05);
     assert.equal(modelCalls, 7);
@@ -101,6 +111,23 @@ test('one native Pi prompt drives tools and returns final text unchanged, withou
     const before = modelCalls;
     await assert.rejects(() => runner.run(task), /model_output_truncated/);
     assert.equal(modelCalls - before, 7); // No automatic paid retry.
+    mode = 'repair-success';
+    const beforeRepair = modelCalls;
+    const repaired = await runner.run(task);
+    assert.equal(modelCalls - beforeRepair, 8); // Exactly one extra request only on missing metadata.
+    assert.equal(repaired.text, finalText);
+    assert.equal(repaired.locationRepair, true);
+    assert.equal(repaired.locationIncomplete, false);
+    assert.deepEqual(repaired.displayMarks, result.displayMarks);
+    for (const repairMode of ['repair-invalid', 'repair-truncated', 'repair-toolcall']) {
+      mode = repairMode;
+      const beforeAttempt = modelCalls;
+      const unresolved = await runner.run(task);
+      assert.equal(modelCalls - beforeAttempt, 8); // No unbounded retries or re-proofreading.
+      assert.equal(unresolved.text, finalText);
+      assert.equal(unresolved.locationIncomplete, true);
+      assert.equal(unresolved.usage.calls, 8);
+    }
     mode = 'normal';
     const offline = await createPiRunner({ ...options, search: null });
     assert.equal((await offline.run(task)).incomplete, true); // Requested but unavailable search is not passed off as done.
