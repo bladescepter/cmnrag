@@ -3,7 +3,7 @@ import { handleProofreading, signIdentity } from "../src/proofreading/gateway";
 import type { AuthUser } from "../src/auth";
 import { verifyWorkerToken } from "../../proofreading-service/src/auth.js";
 
-const user = { id: 7, status: "approved" } as AuthUser;
+const user = { id: 7, role: "user", status: "approved", proofreading_enabled: 1 } as AuthUser;
 const configured = { PROOFREADING_BACKEND_URL: "https://proofreading.example.org/", PROOFREADING_SIGNING_SECRET: "test-only-signing-secret" };
 const url = "https://cfzx.example.org/api/proofreading/tasks";
 afterEach(() => vi.unstubAllGlobals());
@@ -15,6 +15,24 @@ describe("proofreading gateway", () => {
 		expect((await handleProofreading(new Request(url), configured, null)).status).toBe(401);
 		expect((await handleProofreading(new Request(url), configured, { ...user, status: "rejected" })).status).toBe(403);
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+	it("requires explicit proofreading access for every endpoint, even with an approved account", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		const ordinary = { ...user, proofreading_enabled: 0 };
+		for (const [path, method] of [["/availability", "GET"], ["/tasks", "GET"], ["/tasks", "POST"],
+			["/tasks/12345678-1234-1234-1234-123456789abc", "GET"]]) {
+			const response = await handleProofreading(new Request("https://cfzx.example.org/api/proofreading" + path, { method }), configured, ordinary);
+			expect(response.status).toBe(403);
+			expect(await response.json()).toEqual({ error: "proofreading_forbidden" });
+		}
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+	it("administrators retain access without the ordinary-account flag", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(Response.json({ items: [] }));
+		vi.stubGlobal("fetch", fetchMock);
+		expect((await handleProofreading(new Request(url), configured, { ...user, role: "admin", proofreading_enabled: 0 })).status).toBe(200);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 	it("fails closed without backend configuration and denies cross-origin submissions", async () => {
 		expect((await handleProofreading(new Request(url), {}, user)).status).toBe(503);

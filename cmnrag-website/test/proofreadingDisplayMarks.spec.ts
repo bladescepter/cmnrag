@@ -49,7 +49,7 @@ describe("completed proofreading display marks (never a verdict filter)", () => 
     const original = "错词。正确机构。";
     expect(locateOpinionMarks(original, "无意见")).toEqual([]);
     expect(locateOpinionMarks(original, "这里可能有错词\n正确机构的写法是……")).toEqual([]);
-    expect(OPINION_LINE.test("【文法】错词；应改为正确词")).toBe(false);
+    expect(OPINION_LINE.test("【文法】错词；应改为正确词")).toBe(true); // A missing location label must not erase an opinion.
   });
   it("still accepts the legacy arrow line format", () => {
     const original = "城市内涝，天气晴好。";

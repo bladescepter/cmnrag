@@ -12,7 +12,7 @@ const base = '.pi/skills/proofreading/';
 function respond(res, step, mode, repair = false) {
   const calls = [
     RULE_FILES.filter(f => f.startsWith('references/')).map((file, i) => ({ id: `read-${i}`, type: 'function', function: { name: 'read', arguments: JSON.stringify({ path: base + file, ...(mode === 'incomplete' ? { limit: 1 } : {}) }) } })),
-    [{ id: 'write', type: 'function', function: { name: 'write', arguments: JSON.stringify({ path: base + 'drafts/draft.md', content: draft }) } }],
+    [{ id: 'read-prepared', type: 'function', function: { name: 'read', arguments: JSON.stringify({ path: base + 'drafts/draft.md' }) } }],
     [{ id: 'scan', type: 'function', function: { name: 'bash', arguments: JSON.stringify({ command: `bash ${base}scripts/scan-keywords.sh ${base}drafts/draft.md` }) } }],
     [{ id: 'read-draft', type: 'function', function: { name: 'read', arguments: JSON.stringify({ path: base + 'drafts/draft.md' }) } }],
     [{ id: 'search', type: 'function', function: { name: 'web_search', arguments: JSON.stringify({ queries: ['虚构机构 官方名称', '虚构活动 官方主题'] }) } }],
@@ -22,6 +22,8 @@ function respond(res, step, mode, repair = false) {
   const footer = '\n<proofreading-locations>\n[{"number":1,"lines":[2]}]\n</proofreading-locations>';
   const response = repair ? '<proofreading-locations>\n' + (mode === 'repair-invalid' ? '[{"number":1,"lines":[999]}]' : '[{"number":1,"lines":[2]}]') + '\n</proofreading-locations>'
     : mode === 'clean' ? '无意见\n<proofreading-locations>\n[]\n</proofreading-locations>'
+    : mode === 'line-label' ? finalText.replace('第2段', '第2行')
+    : mode === 'repair-malformed' ? finalText.replace('第2段', '位置待定')
     : mode.startsWith('repair-') ? finalText : finalText + footer;
   const delta = tools ? { role: 'assistant', tool_calls: tools.map((call, index) => ({ index, ...call })) } : { role: 'assistant', content: response };
   const finish = ((mode === 'truncated' && !tools) || (mode === 'repair-truncated' && repair)) ? 'length' : tools ? 'tool_calls' : 'stop';
@@ -47,7 +49,7 @@ test('native skill returns verbatim opinions plus source lines in the same final
       const request = JSON.parse(body); requests.push(request);
       assert.equal(request.response_format, undefined);
       const repair = request.messages.filter(m => m.role === 'user').length === 2;
-      assert.deepEqual((request.tools || []).map(t => t.function.name).sort(), repair ? [] : ['bash', 'read', 'web_search', 'write']);
+      assert.deepEqual((request.tools || []).map(t => t.function.name).sort(), repair ? [] : ['bash', 'read', 'web_search']);
       assert.equal(request.messages.filter(m => m.role === 'user').length, repair ? 2 : 1);
       assert.ok(JSON.stringify(request.messages).includes('测试原版技能'));
       assert.ok(JSON.stringify(request.messages).includes('L2\\t截止今天发布。'));
@@ -90,6 +92,8 @@ test('native skill returns verbatim opinions plus source lines in the same final
     assert.equal(modelCalls, 7);
     assert.equal(searches, 2);
     assert.ok(stages.includes('Pi 执行关键词扫描'));
+    assert.ok(stages.includes('Pi 已复制本任务草稿'));
+    assert.ok(requests.every(request => !(request.tools || []).some(tool => tool.function.name === 'write')));
     const toolResults = requests.flatMap(r => r.messages.filter(m => m.role === 'tool'));
     assert.ok(toolResults.some(m => JSON.stringify(m).includes('测试扫描线索')));
     assert.ok(toolResults.some(m => JSON.stringify(m).includes('官方名称及原文')));
@@ -119,6 +123,20 @@ test('native skill returns verbatim opinions plus source lines in the same final
     assert.equal(repaired.locationRepair, true);
     assert.equal(repaired.locationIncomplete, false);
     assert.deepEqual(repaired.displayMarks, result.displayMarks);
+    mode = 'line-label';
+    const beforeLine = modelCalls;
+    const lineResult = await runner.run(task);
+    assert.equal(lineResult.text, finalText.replace('第2段', '第2行'));
+    assert.deepEqual(lineResult.displayMarks, result.displayMarks);
+    assert.equal(lineResult.locationIncomplete, false);
+    assert.equal(lineResult.locationRepair, false);
+    assert.equal(modelCalls - beforeLine, 7); // Physical lines need no additional model call.
+    mode = 'repair-malformed';
+    const malformed = await runner.run(task);
+    assert.equal(malformed.text, finalText.replace('第2段', '位置待定'));
+    assert.equal(malformed.locationRepair, true);
+    assert.equal(malformed.locationIncomplete, false);
+    assert.deepEqual(malformed.displayMarks, result.displayMarks);
     for (const repairMode of ['repair-invalid', 'repair-truncated', 'repair-toolcall']) {
       mode = repairMode;
       const beforeAttempt = modelCalls;
@@ -129,6 +147,14 @@ test('native skill returns verbatim opinions plus source lines in the same final
       assert.equal(unresolved.usage.calls, 8);
     }
     mode = 'normal';
+    const concurrentTasks = Array.from({ length: 4 }, (_, index) => ({ ...task, id: `concurrent-${index}`, content: `独立稿件${index}\n截止今天发布。` }));
+    const concurrent = await Promise.all(concurrentTasks.map(each => runner.run(each)));
+    concurrent.forEach((output, index) => {
+      assert.equal(output.locationIncomplete, false);
+      assert.equal(output.usage.calls, 7);
+      assert.equal(concurrentTasks[index].content.slice(output.displayMarks[0].spans[0].start, output.displayMarks[0].spans[0].end), '截止今天');
+    });
+    assert.deepEqual(await readdir(join(stateDir, 'workspaces')), []);
     const offline = await createPiRunner({ ...options, search: null });
     assert.equal((await offline.run(task)).incomplete, true); // Requested but unavailable search is not passed off as done.
     assert.deepEqual(await readdir(join(stateDir, 'workspaces')), []);

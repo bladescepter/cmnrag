@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import worker from "../src/index";
 import {
+	canProofread,
 	handleAdminAction,
+	handleAdminProofreadingAccess,
 	handleAdminUsers,
 	handleLogin,
 	handleLogout,
@@ -11,7 +14,7 @@ import {
 	verifyPassword,
 } from "../src/auth";
 
-type UserRow = { id: number; username: string; password_hash: string; display_name: string; email: string; note: string; role: string; status: string; rejected_reason: string; created_at: string; approved_at: string | null };
+type UserRow = { id: number; username: string; password_hash: string; display_name: string; email: string; note: string; role: string; status: string; proofreading_enabled: number; rejected_reason: string; created_at: string; approved_at: string | null };
 type SessionRow = { token: string; user_id: number; expires_at: string };
 
 /** 最小内存 D1 fake：仅覆盖 auth 相关 SQL 形态 */
@@ -29,6 +32,9 @@ class FakeD1 {
 					const u = self.users.find((x) => x.username === params[0]);
 					return (u ? { id: u.id, password_hash: u.password_hash, status: u.status, role: u.role } : null) as T | null;
 				}
+					if (sql.includes("FROM users WHERE id = ?")) {
+						return (self.users.find(u => u.id === Number(params[0])) ?? null) as T | null;
+					}
 					if (sql.includes("FROM users WHERE username = ?")) {
 						const u = self.users.find((x) => x.username === params[0]);
 						return (u ? { id: u.id, username: u.username } : null) as T | null;
@@ -37,7 +43,7 @@ class FakeD1 {
 						const s = self.sessions.find((x) => x.token === params[0] && x.expires_at > new Date().toISOString());
 						if (!s) return null;
 						const u = self.users.find((x) => x.id === s.user_id);
-						return (u ? { id: u.id, username: u.username, display_name: u.display_name, email: u.email, note: u.note, role: u.role, status: u.status, created_at: u.created_at } : null) as T | null;
+						return (u ? { id: u.id, username: u.username, display_name: u.display_name, email: u.email, note: u.note, role: u.role, status: u.status, proofreading_enabled: u.proofreading_enabled, created_at: u.created_at } : null) as T | null;
 					}
 					return null;
 				},
@@ -52,7 +58,7 @@ class FakeD1 {
 				async run(): Promise<{ success: boolean }> {
 					if (sql.includes("INSERT INTO users")) {
 						const [username, password_hash, displayName, email, note, role, status] = params as string[];
-						self.users.push({ id: self.nextId++, username, password_hash, display_name: displayName, email, note, role, status, rejected_reason: "", created_at: new Date().toISOString(), approved_at: status === "approved" ? new Date().toISOString() : null });
+						self.users.push({ id: self.nextId++, username, password_hash, display_name: displayName, email, note, role, status, proofreading_enabled: 0, rejected_reason: "", created_at: new Date().toISOString(), approved_at: status === "approved" ? new Date().toISOString() : null });
 					} else if (sql.includes("INSERT INTO sessions")) {
 						const [token, userId, expiresAt] = params as [string, number, string];
 						self.sessions.push({ token, user_id: userId, expires_at: expiresAt });
@@ -63,6 +69,10 @@ class FakeD1 {
 						const [reason, id] = params as [string, number];
 						const u = self.users.find((x) => x.id === Number(id));
 						if (u) { u.status = "rejected"; u.rejected_reason = reason; u.approved_at = null; }
+					} else if (sql.includes("UPDATE users SET proofreading_enabled")) {
+						const [enabled, id] = params as [number, number];
+						const u = self.users.find(x => x.id === id && x.role === "user" && x.status === "approved");
+						if (u) u.proofreading_enabled = enabled;
 					} else if (sql.includes("DELETE FROM sessions WHERE token = ?")) {
 						self.sessions = self.sessions.filter((s) => s.token !== params[0]);
 					} else if (sql.includes("DELETE FROM sessions WHERE expires_at")) {
@@ -153,6 +163,52 @@ describe("认证模块", () => {
 		expect((await requireUser(req("/api/auth/me", { headers: { cookie: token } }), env))?.username).toBe("zhangsan");
 		await handleLogout(req("/api/auth/logout", { method: "POST", headers: { cookie: token } }), env);
 		expect(await requireUser(req("/api/auth/me", { headers: { cookie: token } }), env)).toBeNull();
+	});
+
+	it("测试校对权限由管理员单独授予，撤销后同一登录会话立即失效", async () => {
+		const db = new FakeD1();
+		const env = makeEnv(db);
+		const register = (body: unknown) => handleRegister(req("/api/auth/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }), env);
+		await register({ username: "testreader", password: "password123", proofreading_enabled: 1, role: "admin" });
+		expect(db.users[0].role).toBe("user");
+		expect(db.users[0].proofreading_enabled).toBe(0); // 注册者不能自行提权。
+		await handleAdminAction(req("/api/admin/users/1/approve", { method: "POST" }), env, "1", "approve");
+		await register({ username: "manager", password: "password123", init_code: "secret-init-1" });
+		const login = async (username: string) => cookieFrom(await handleLogin(req("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password: "password123" }) }), env));
+		const userCookie = await login("testreader");
+		const adminCookie = await login("manager");
+		const currentUser = () => requireUser(req("/api/auth/me", { headers: { cookie: userCookie } }), env);
+		const toggle = (cookie: string, enabled: boolean) => worker.fetch(req("/api/admin/users/1/proofreading", {
+			method: "POST", headers: { cookie, origin: "https://example.com", "content-type": "application/json" }, body: JSON.stringify({ enabled }),
+		}), env);
+		expect(canProofread(await currentUser())).toBe(false);
+		expect((await toggle(userCookie, true)).status).toBe(403);
+		expect((await toggle(adminCookie, true)).status).toBe(200);
+		expect(canProofread(await currentUser())).toBe(true);
+		expect(await handleMe(await currentUser()).json()).toMatchObject({ user: { role: "user", permissions: { proofreading: true } } });
+		expect((await toggle(userCookie, false)).status).toBe(403); // 测试校对权限不带来管理员权限。
+		expect((await toggle(adminCookie, false)).status).toBe(200);
+		expect(canProofread(await currentUser())).toBe(false);
+		expect(db.sessions).toHaveLength(2); // 不需要退出或重新登录。
+	});
+
+	it("校对授权拒绝跨来源、无效值、未知用户和未审批用户；管理员权限保持可用", async () => {
+		const db = new FakeD1();
+		const env = makeEnv(db);
+		const change = (id: string, enabled: unknown, origin = "https://example.com") => handleAdminProofreadingAccess(req("/api/admin/users/" + id + "/proofreading", {
+			method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ enabled }),
+		}), env, id);
+		expect((await change("1", true, "https://other.example")).status).toBe(403);
+		expect((await change("0", true)).status).toBe(400);
+		expect((await change("1", "true")).status).toBe(400);
+		expect((await change("1", true)).status).toBe(404);
+		await handleRegister(req("/api/auth/register", { method: "POST", body: JSON.stringify({ username: "pendingreader", password: "password123" }) }), env);
+		expect((await change("1", true)).status).toBe(409);
+		await handleRegister(req("/api/auth/register", { method: "POST", body: JSON.stringify({ username: "manager", password: "password123", init_code: "secret-init-1" }) }), env);
+		expect((await change("2", false)).status).toBe(409);
+		expect(canProofread(db.users[1])).toBe(true);
+		db.users[1].status = "rejected";
+		expect(canProofread(db.users[1])).toBe(false);
 	});
 
 	it("用户名重复注册 409；非法用户名 400", async () => {

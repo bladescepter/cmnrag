@@ -119,8 +119,11 @@ try {
   } }, 'backend');
   await waitFor(backendUrl + 'api/proofreading/availability', () => ({ headers: { authorization: `Bearer ${signTestToken(1, signing.get('PROOFREADING_SIGNING_SECRET'))}` } }), backend);
   const persistTo = join(stateDir, 'worker');
-  if (!(await hasLocalAuthSchema(persistTo))) {
-    const migration = launch('npx', ['wrangler', 'd1', 'execute', 'DB', '--local', '--yes', `--file=${join(websiteDir, 'migrations', '0004_auth.sql')}`, `--persist-to=${persistTo}`], { cwd: websiteDir, env: cliEnv }, 'migration');
+  const authMigrations = [];
+  if (!(await hasLocalAuthSchema(persistTo))) authMigrations.push('0004_auth.sql');
+  if (!(await hasLocalAuthSchema(persistTo, { proofreadingPermission: true }))) authMigrations.push('0005_proofreading_access.sql');
+  for (const file of authMigrations) {
+    const migration = launch('npx', ['wrangler', 'd1', 'execute', 'DB', '--local', '--yes', `--file=${join(websiteDir, 'migrations', file)}`, `--persist-to=${persistTo}`], { cwd: websiteDir, env: cliEnv }, 'migration');
     await new Promise((resolveDone, reject) => {
       const timer = setTimeout(() => {
         try { process.kill(-migration.pid, 'SIGTERM'); } catch { /* already exited */ }

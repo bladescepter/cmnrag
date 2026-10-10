@@ -81,6 +81,60 @@ test('explicit transport footer is removed independently, preserving every opini
   assert.deepEqual(splitLocatedAnswer(text + '\n<proofreading-locations>\n['), { text, locations: [] });
 });
 
+test('physical line labels recover all six opinions without a footer, preserving blank lines and shared locations', () => {
+  // Synthetic reproduction of the production failure shape; no editorial verdict is asserted here.
+  const lines = Array.from({ length: 63 }, () => '');
+  lines[0] = '测试标题';
+  lines[6] = '机构甲（待完善），XXXX（负责人）。';
+  lines[24] = '测试服务表述。';
+  lines[48] = '“多方联动” 组织模式。';
+  lines[62] = '第四项表述。';
+  const original = lines.join('\n');
+  const answer = [
+    '【准确】第7行：“机构甲”；核对。',
+    '【文法】第7行：“（待完善）”；删除。',
+    '【准确】第7行：“XXXX（负责人）”；补全。',
+    '【口径】第25行：“测试服务表述”；核对。',
+    '【文法】第49行：`“多方联动” 组织模式`；删除空格。',
+    '【文法】第63行：“第四项表述”；核对。',
+  ].join('\n');
+  const marks = resolveDisplayMarks(original, answer, []);
+  assert.equal(marks.length, 6);
+  assert.equal(marksComplete(original, answer, marks), true);
+  assert.deepEqual(marks.map(opinion => opinion.spans.map(span => original.slice(0, span.start).split('\n').length)),
+    [[7], [7], [7], [25], [49], [63]]);
+  assert.equal(validateDisplayMarks(original, answer, []), null);
+});
+
+test('malformed opinion labels remain counted and require source locations rather than disappearing', () => {
+  const original = '标题\n原句。';
+  const answer = '【文法】位置未知：“原句”；修改。\n【准确】缺少姓名；补全。';
+  const missing = resolveDisplayMarks(original, answer, []);
+  assert.equal(missing.length, 2);
+  assert.equal(marksComplete(original, answer, missing), false);
+  assert.equal(validateDisplayMarks(original, answer, []), null);
+  const located = resolveDisplayMarks(original, answer, [locations(1, 2), locations(2, 2)]);
+  assert.equal(marksComplete(original, answer, located), true);
+  assert.equal(original.slice(located[0].spans[0].start, located[0].spans[0].end), '原句');
+  assert.equal(located[1].spans[0].scope, 'line');
+});
+
+test('line labels include heading annotations and Chinese numerals; invalid lines cannot complete', () => {
+  const original = '标题\n\n原句。';
+  for (const label of ['第1行（主标题）', '第一行']) {
+    const answer = `【文法】${label}：“需增补”；修改。`;
+    const marks = resolveDisplayMarks(original, answer, []);
+    assert.equal(marksComplete(original, answer, marks), true);
+    assert.equal(original.slice(marks[0].spans[0].start, marks[0].spans[0].end), '标题');
+  }
+  for (const label of ['第0行', '第2行', '第99行']) {
+    const answer = `【文法】${label}：“原句”；修改。`;
+    assert.equal(marksComplete(original, answer, resolveDisplayMarks(original, answer, [])), false);
+  }
+  assert.deepEqual(validateDisplayMarks(original, '无意见', []), []);
+  assert.equal(validateDisplayMarks(original, '这里有需要修改的内容。', []), null);
+});
+
 test('historical subtitle labels and bracket insertions receive locations without a model request', () => {
   const original = '标题\n—泉州气象科普进村入户“赶路”记\n联合省水务厅发布预警。';
   const answer = '【文法】副标题：“—泉州气象科普进村入户‘赶路’记”；修改。\n【口径】第3段：“（省气象局）联合省水务厅发布预警”；修改。';

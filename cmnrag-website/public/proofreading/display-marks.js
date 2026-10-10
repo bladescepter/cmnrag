@@ -1,7 +1,8 @@
 // Display locations refer to the immutable original, independently of opinion typography.
-const LOCATION = "(?:第[0-9一二三四五六七八九十百]+段(?:[（(][^）)]+[）)])?|主标题|副标题|标题|引题|副题|署名|作者行|末段)";
-export const OPINION_LINE = new RegExp(`^【(?:政治|文法|口径|准确)】${LOCATION}[：:]`);
-const LINE_HEAD = new RegExp(`^【(?:政治|文法|口径|准确)】(${LOCATION})[：:]\\s*(.*)$`);
+const LOCATION = "(?:第[0-9一二三四五六七八九十百]+[行段](?:[（(][^）)]+[）)])?|主标题|副标题|标题|引题|副题|署名|作者行|末段)";
+// Count opinions independently of their location label, so malformed labels cannot vanish.
+export const OPINION_LINE = /^[ \t]*【(?:政治|文法|口径|准确)】/;
+const LINE_HEAD = new RegExp(`^[ \\t]*【(?:政治|文法|口径|准确)】(${LOCATION})[：:]\\s*(.*)$`);
 const QUOTE_CHAR = /[“”‘’"'「」『』«»`]/u;
 const BRACKET_NOTE = /[（(][^（()）]*[)）]/;
 const MAX_SEGMENT_GAP = 10;
@@ -18,8 +19,8 @@ export function sourceLines(original) {
 
 function errorPart(line) {
   const match = LINE_HEAD.exec(line);
-  if (!match) return null;
-  const rest = match[2];
+  if (!OPINION_LINE.test(line)) return null;
+  const rest = match ? match[2] : line.replace(OPINION_LINE, "").replace(/^[^：:]*[：:]\s*/, "");
   let depth = 0, straight = false, code = false;
   for (let i = 0; i < rest.length; i++) {
     const char = rest[i];
@@ -127,6 +128,22 @@ function validLocations(locations, lines) {
   return result;
 }
 
+// A physical line label is also explicit metadata, including blank lines in its numbering.
+function physicalScope(label, lines) {
+  const match = /^第([0-9一二三四五六七八九十百]+)行/.exec(label || "");
+  if (!match) return null;
+  const digits = "零一二三四五六七八九";
+  let number = 0, digit = 0;
+  if (/^[0-9]+$/.test(match[1])) number = Number(match[1]);
+  else for (const char of match[1]) {
+    if (char === "十" || char === "百") { number += (digit || 1) * (char === "十" ? 10 : 100); digit = 0; }
+    else digit = digits.indexOf(char);
+  }
+  if (!/^[0-9]+$/.test(match[1])) number += digit;
+  const line = Number.isSafeInteger(number) && number > 0 ? lines[number - 1] : null;
+  return line?.text.trim() ? [line] : null;
+}
+
 // Historical answers have no explicit physical line IDs. Use paragraph labels only as a fallback.
 function legacyScope(label, lines) {
   const nonempty = lines.filter(line => line.text.trim());
@@ -153,9 +170,9 @@ export function locateOpinionMarks(original, answer, locations = [], { requireLo
   const whole = [{ start: 0, end: original.length }];
   const opinions = [];
   for (const line of answer.split(/\r?\n/)) {
+    if (!OPINION_LINE.test(line)) continue;
     const head = LINE_HEAD.exec(line);
-    if (!head) continue;
-    const number = opinions.length + 1, spans = [], scope = explicit.get(number);
+    const number = opinions.length + 1, spans = [], scope = explicit.get(number) || physicalScope(head?.[1], lines);
     const part = errorPart(line);
     if (!requireLocations || scope) {
       const searchScopes = scope || whole;
@@ -168,7 +185,7 @@ export function locateOpinionMarks(original, answer, locations = [], { requireLo
       }
       // Missing text (e.g. a required name) belongs to a source line, not to an invented substring.
       if (!spans.length) {
-        const fallback = scope || legacyScope(head[1], lines);
+        const fallback = scope || legacyScope(head?.[1], lines);
         // In historical repeated quotations, the paragraph label can disambiguate before a whole-line fallback.
         for (const target of fallback) {
           const match = part && locateQuote(original, unwrap(part), [target]);
@@ -185,6 +202,8 @@ export function locateOpinionMarks(original, answer, locations = [], { requireLo
 export function validateDisplayMarks(original, answer, marks) {
   const expected = locateOpinionMarks(original, answer, [], { requireLocations: true });
   if (!Array.isArray(marks) || marks.length !== expected.length) return null;
+  // Only the skill's explicit no-opinion verdict can legitimately have no locations.
+  if (!expected.length && answer.trim() !== "无意见") return null;
   const numbers = new Set();
   for (const opinion of marks) {
     if (!opinion || !Number.isSafeInteger(opinion.number) || opinion.number < 1 || opinion.number > expected.length || numbers.has(opinion.number) || !Array.isArray(opinion.spans) || !opinion.spans.length) return null;

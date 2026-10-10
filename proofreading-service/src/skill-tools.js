@@ -1,12 +1,12 @@
-import { readFile, writeFile, unlink } from 'node:fs/promises';
+import { readFile, writeFile, copyFile, chmod, unlink } from 'node:fs/promises';
 import { resolve, dirname, basename, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 // Reuse Pi's read/write/bash tools. Only their I/O boundary is restricted for a multi-user service.
-// originalFile: 任务启动器预先写入技能目录的原稿文件名（只读）。模型写草稿从此文件逐字复制，不凭上下文记忆重构——消除 draft_must_match_original 重试循环。
+// originalFile: 只读原稿来源；prepareDraft 在模型启动前直接复制扫描草稿，模型不转写全文。
 // onReject: 工具调用被拒（路径越界、草稿不一致、命令不允许等）时上报（工具名+错误码），供诊断日志定位模型重试循环。
-export async function createSkillTools({ cwd, skillDir, files, content, search, originalFile = null, onStage = () => {}, onSearch = () => {}, onReject = () => {} }) {
+export async function createSkillTools({ cwd, skillDir, files, content, search, originalFile = null, prepareDraft = false, onStage = () => {}, onSearch = () => {}, onReject = () => {} }) {
   const sdk = await import('@earendil-works/pi-coding-agent');
   const require = createRequire(import.meta.resolve('@earendil-works/pi-coding-agent'));
   const { Type } = require('typebox');
@@ -23,6 +23,16 @@ export async function createSkillTools({ cwd, skillDir, files, content, search, 
   const checkDraft = path => {
     if (dirname(path) !== draftsDir || !/^[\p{L}\p{N}_-]+\.md$/u.test(basename(path))) throw new Error('path_not_allowed');
   };
+  const copyDraft = async path => {
+    checkDraft(path);
+    if (!originalPath || !(await readFile(originalPath)).equals(Buffer.from(content, 'utf8'))) throw new Error('draft_must_match_original');
+    await copyFile(originalPath, path);
+    await chmod(path, 0o600);
+    if (!(await readFile(path)).equals(Buffer.from(content, 'utf8'))) throw new Error('draft_must_match_original');
+    drafts.add(path);
+    onStage('Pi 已复制本任务草稿');
+  };
+  if (prepareDraft) await copyDraft(join(draftsDir, 'draft.md'));
   const readable = path => rules.has(path) || drafts.has(path) || path === originalPath;
   const read = sdk.createReadToolDefinition(cwd, { operations: {
     access: async path => { if (!readable(path)) throw new Error('path_not_allowed'); },
@@ -71,6 +81,11 @@ export async function createSkillTools({ cwd, skillDir, files, content, search, 
       // Parse simple argv only. Never pass model-generated command strings to a shell.
       const tokens = command.trim().match(/"[^"\n]*"|'[^'\n]*'|[^\s]+/g) || [];
       const args = tokens.map(token => /^(["']).*\1$/s.test(token) ? token.slice(1, -1) : token);
+      if (args[0] === 'cp' && args.length === 3 && originalPath && pathFor(args[1]) === originalPath) {
+        await copyDraft(pathFor(args[2]));
+        onData(Buffer.from('原稿已直接复制为本任务草稿并校验一致。'));
+        return { exitCode: 0 };
+      }
       if (args[0] === 'bash' && args.length === 3 && pathFor(args[1]) === join(skillDir, 'scripts/scan-keywords.sh')) {
         const draft = pathFor(args[2]); checkDraft(draft);
         if (!drafts.has(draft) || await readFile(draft, 'utf8') !== content) throw new Error('draft_must_match_original');
@@ -96,10 +111,10 @@ export async function createSkillTools({ cwd, skillDir, files, content, search, 
         for (const path of targets) { await unlink(path); drafts.delete(path); }
         onData(Buffer.from('本任务草稿已清理。')); return { exitCode: 0 };
       }
-      throw new Error('command_not_allowed: only bash <skill>/scripts/scan-keywords.sh <skill>/drafts/<name>.md and rm <skill>/drafts/*.md');
+      throw new Error('command_not_allowed: only cp <skill>/original.md <skill>/drafts/<name>.md, bash <skill>/scripts/scan-keywords.sh <skill>/drafts/<name>.md and rm <skill>/drafts/*.md');
     },
   } });
-  bash.description = '运行本任务技能中的原版扫描脚本：bash <技能目录>/scripts/scan-keywords.sh <技能目录>/drafts/<稿名>.md；或 rm 清理本任务 drafts 中的草稿。不支持其他命令、管道、重定向、环境变量或任意网络访问。';
+  bash.description = '本任务草稿已由程序直接复制并校验。运行原版扫描：bash <技能目录>/scripts/scan-keywords.sh <技能目录>/drafts/draft.md；或 rm 清理本任务草稿。需要另取副本时仅可 cp <技能目录>/original.md <技能目录>/drafts/<稿名>.md。不支持其他命令、管道、重定向、环境变量或任意网络访问。';
   bash.promptGuidelines = [];
   const web = {
     name: 'web_search', label: 'Search',
@@ -132,7 +147,7 @@ export async function createSkillTools({ cwd, skillDir, files, content, search, 
     };
   }
   return {
-    tools: [read, write, bash, web],
+    tools: prepareDraft ? [read, bash, web] : [read, write, bash, web],
     async incomplete() {
       for (const file of files.filter(file => file.startsWith('references/'))) {
         const path = join(skillDir, file);

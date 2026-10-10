@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, chmod, stat, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createSkillTools } from '../src/skill-tools.js';
@@ -162,6 +162,35 @@ test('original.md is readable, staged separately, and enables verbatim draft cop
     }
     assert.ok(stages.includes('Pi 通读校对中')); // 参考文件全部读完即进入通读
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('prepared drafts copy original bytes before model tools run, with restricted copying and no write tool', async () => {
+  const app = await setup(null);
+  const original = '🌤标题\r\n\r\n 原句“引号”  空格\t。\n';
+  try {
+    await writeFile(join(app.skillDir, 'original.md'), original, { mode: 0o400 });
+    const stages = [];
+    const api = await createSkillTools({ cwd: app.cwd, skillDir: app.skillDir, files: Object.keys(rules),
+      originalFile: 'original.md', prepareDraft: true, content: original, onStage: stage => stages.push(stage) });
+    const byName = Object.fromEntries(api.tools.map(tool => [tool.name, tool]));
+    assert.equal(byName.write, undefined);
+    assert.deepEqual(await readFile(join(app.skillDir, 'drafts/draft.md')), Buffer.from(original));
+    assert.equal((await stat(join(app.skillDir, 'drafts/draft.md'))).mode & 0o777, 0o600);
+    assert.deepEqual(stages, ['Pi 已复制本任务草稿']);
+    const scan = `bash ${base}scripts/scan-keywords.sh ${base}drafts/draft.md`;
+    await app.run(byName.bash, { command: scan });
+    await app.run(byName.bash, { command: `cp ${base}original.md ${base}drafts/copy.md` });
+    assert.deepEqual(await readFile(join(app.skillDir, 'drafts/copy.md')), Buffer.from(original));
+    await assert.rejects(() => app.run(byName.bash, { command: `cp /etc/passwd ${base}drafts/copy.md` }), /command_not_allowed/);
+    await assert.rejects(() => app.run(byName.bash, { command: `cp ${base}original.md ${base}SKILL.md` }), /path_not_allowed/);
+    await assert.rejects(() => app.run(byName.bash, { command: `cp ${base}original.md ${base}drafts/copy.md; ls` }), /command_not_allowed/);
+    await writeFile(join(app.skillDir, 'drafts/draft.md'), original + '额外文字');
+    await assert.rejects(() => app.run(byName.bash, { command: scan }), /draft_must_match_original/);
+    await chmod(join(app.skillDir, 'original.md'), 0o600);
+    await writeFile(join(app.skillDir, 'original.md'), '错误来源');
+    await assert.rejects(() => createSkillTools({ cwd: app.cwd, skillDir: app.skillDir, files: Object.keys(rules),
+      originalFile: 'original.md', prepareDraft: true, content: original }), /draft_must_match_original/);
+  } finally { await app.clean(); }
 });
 
 test('a fully executed flow is complete; search availability alone does not block it', async () => {

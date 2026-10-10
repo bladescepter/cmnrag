@@ -17,6 +17,7 @@ export type AuthUser = {
 	note: string;
 	role: string;
 	status: string;
+	proofreading_enabled: number;
 	created_at: string;
 };
 
@@ -91,7 +92,7 @@ export async function requireUser(request: Request, env: Env): Promise<AuthUser 
 	if (!token) return null;
 	try {
 		const row = await env.DB.prepare(
-			"SELECT u.id, u.username, u.display_name, u.email, u.note, u.role, u.status, u.created_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires_at > datetime('now')"
+			"SELECT u.id, u.username, u.display_name, u.email, u.note, u.role, u.status, u.proofreading_enabled, u.created_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires_at > datetime('now')"
 		).bind(token).first<AuthUser>();
 		if (!row) return null;
 		// 惰性清理过期会话
@@ -191,9 +192,14 @@ export async function handleLogout(request: Request, env: Env): Promise<Response
 	return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "set-cookie": clearCookie() } });
 }
 
+export function canProofread(user: AuthUser | null): boolean {
+	return Boolean(user && user.status === "approved" && (user.role === "admin" || user.proofreading_enabled === 1));
+}
+
 export function handleMe(user: AuthUser | null): Response {
 	if (!user) return error("unauthorized", 401);
-	return json({ user: { username: user.username, display_name: user.display_name, email: user.email, role: user.role, status: user.status } });
+	return json({ user: { username: user.username, display_name: user.display_name, email: user.email, role: user.role, status: user.status,
+		permissions: { proofreading: canProofread(user) } } });
 }
 
 /** 管理员：列出用户（默认 pending，可 ?status=approved/rejected/all） */
@@ -201,7 +207,7 @@ export async function handleAdminUsers(url: URL, env: Env): Promise<Response> {
 	const status = url.searchParams.get("status") ?? "pending";
 	const allowed = ["pending", "approved", "rejected", "all"];
 	if (!allowed.includes(status)) return error("invalid_status", 400);
-	let sql = "SELECT id, username, display_name, email, note, role, status, rejected_reason, created_at, approved_at FROM users";
+	let sql = "SELECT id, username, display_name, email, note, role, status, proofreading_enabled, rejected_reason, created_at, approved_at FROM users";
 	const params: unknown[] = [];
 	if (status !== "all") {
 		sql += " WHERE status = ?";
@@ -214,6 +220,26 @@ export async function handleAdminUsers(url: URL, env: Env): Promise<Response> {
 	} catch {
 		return error("database_unavailable", 503);
 	}
+}
+
+/** 管理员：为已审批的普通账户单独开通或撤销测试校对权限。 */
+export async function handleAdminProofreadingAccess(request: Request, env: Env, idText: string): Promise<Response> {
+	if (request.headers.get("origin") !== new URL(request.url).origin) return error("invalid_origin", 403);
+	const id = Number(idText);
+	if (!Number.isSafeInteger(id) || id <= 0) return error("invalid_id", 400);
+	let body: { enabled?: unknown };
+	try { body = await request.json() as { enabled?: unknown }; }
+	catch { return error("invalid_json", 400); }
+	if (!body || typeof body.enabled !== "boolean") return error("enabled_must_be_boolean", 400);
+	try {
+		const target = await env.DB.prepare("SELECT id, role, status FROM users WHERE id = ?").bind(id).first<{ id: number; role: string; status: string }>();
+		if (!target) return error("user_not_found", 404);
+		if (target.role === "admin") return error("admin_already_has_proofreading_access", 409);
+		if (target.status !== "approved") return error("user_must_be_approved", 409);
+		await env.DB.prepare("UPDATE users SET proofreading_enabled = ? WHERE id = ? AND role = 'user' AND status = 'approved'")
+			.bind(body.enabled ? 1 : 0, id).run();
+		return json({ ok: true, proofreading_enabled: body.enabled ? 1 : 0 });
+	} catch { return error("database_unavailable", 503); }
 }
 
 /** 管理员：审批（approve / reject） */

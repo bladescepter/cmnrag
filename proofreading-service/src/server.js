@@ -2,6 +2,8 @@ import http from 'node:http';
 import { verifyWorkerToken } from './auth.js';
 import { locateOpinionMarks, validateDisplayMarks } from '../../cmnrag-website/public/proofreading/display-marks.js';
 
+export const MAX_CONCURRENT_TASKS = 4;
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const categories = new Set(['political', 'grammar', 'policy', 'accuracy']);
 function httpsEvidence(list) {
@@ -91,70 +93,92 @@ export function createBackend({ store, runner, runners, defaultModel, balance = 
   const readyRunners = Object.fromEntries(Object.entries(pool).filter(([, each]) => each.ready));
   const defaultRunner = defaultModel && Object.hasOwn(readyRunners, defaultModel) ? readyRunners[defaultModel] : Object.values(readyRunners)[0];
   const defaultRunnerId = Object.keys(readyRunners).find(id => readyRunners[id] === defaultRunner) || '';
-  let running = false;
+  const active = new Map();
+  const activeUsers = new Set();
   let stopping = false;
-  async function drain() {
-    if (running || stopping || !defaultRunner) return;
-    running = true;
+  let scheduling = false;
+  async function runTask(task, taskRunner, userId) {
+    const stages = [];
+    store.update(task.id, { status: 'running' });
+    logger?.log('queue_pick', { task: task.id, user: userId });
     try {
-      while (!stopping && defaultRunner) {
-        const next = store.queued()[0];
+      const result = await taskRunner.run(task, (name) => {
+        stages.push({ name, status: 'done' });
+        store.update(task.id, { stages });
+        logger?.log('stage_done', { task: task.id, stage: name });
+      });
+      if (result?.format === 'pi-final-text-v1') {
+        if (typeof result.text !== 'string' || !result.text.trim()) throw new Error('invalid_results');
+        const displayMarks = result.displayMarks ?? locateOpinionMarks(task.content, result.text);
+        const locationIncomplete = result.locationIncomplete || validateDisplayMarks(task.content, result.text, displayMarks) === null;
+        const status = locationIncomplete ? 'failed' : result.incomplete ? 'partial' : 'completed';
+        // Opinions stay verbatim; display metadata is independent and must cover every number.
+        store.update(task.id, { status, result_format: result.format, result_text: result.text, usage: result.usage || {},
+          display_marks: displayMarks, location_status: locationIncomplete ? 'incomplete' : 'complete',
+          thinking_level: typeof result.thinkingLevel === 'string' ? result.thinkingLevel : '',
+          note: locationIncomplete ? '校对结果生成失败；意见与原文角标必须全部对应，任务记录已保留。'
+            : result.incomplete ? '技能执行未全部完成；保留 Pi 最终回答，不代表校对通过。' : '' });
+        logger?.log(locationIncomplete ? 'task_failed' : 'task_done', { task: task.id, status, format: result.format,
+          ...(locationIncomplete ? { error: 'opinion_locations_incomplete' } : {}),
+          thinking_level: typeof result.thinkingLevel === 'string' ? result.thinkingLevel : null });
+        return;
+      }
+      // Legacy structured runners/results remain readable; the production runner uses final text.
+      if (!result || !Array.isArray(result.issues) || !Array.isArray(result.unverified) || !Array.isArray(result.verified)) throw new Error('invalid_results');
+      const issues = validateIssues(task, result.issues);
+      const verified = validateVerified(result.verified);
+      const sources = validateSources(result.sources);
+      if (result.unverified.some(item => typeof item !== 'string' || !item.trim() || item.length > 500)) throw new Error('invalid_unverified');
+      const partial = result.unverified.length > 0;
+      logger?.log('task_done', { task: task.id, status: partial ? 'partial' : 'completed', issues: issues.length, unverified: result.unverified.length, verified: verified.length });
+      const refinedTitle = typeof result.title === 'string' ? result.title.trim() : '';
+      const fields = { status: partial ? 'partial' : 'completed', issues, unverified: result.unverified, verified, sources,
+        note: partial ? '部分意见需人工复核或事实核查未完成；搜索线索不等于已核实，待核实事项不可视为通过。' : '' };
+      if (refinedTitle && refinedTitle.length <= 60) fields.title = refinedTitle;
+      store.update(task.id, fields);
+    } catch (error) {
+      // Never convert a failed model, search or anchor validation into “无意见”.
+      logger?.log('task_failed', { task: task.id, error: error instanceof Error ? error.message : String(error) });
+      store.update(task.id, { status: 'failed', note: '校对未完成；请联系管理员核查任务记录。',
+        ...(error?.usage && typeof error.usage === 'object' ? { usage: error.usage } : {}),
+        thinking_level: typeof error?.thinkingLevel === 'string' ? error.thinkingLevel : '' });
+    }
+  }
+  function schedule() {
+    if (scheduling || stopping || !defaultRunner) return;
+    scheduling = true;
+    try {
+      while (active.size < MAX_CONCURRENT_TASKS) {
+        // An earlier task blocked by its own user must not block other users.
+        const next = store.queued().find(task => !activeUsers.has(task.user_id));
         if (!next) break;
         const task = store.detail(next.id, next.user_id);
         const taskRunner = task?.model ? pool[task.model] : defaultRunner;
         if (!taskRunner?.ready) {
-          // 配置中已移除的模型：任务无法执行，保留原文并标记失败。
           store.update(next.id, { status: 'failed', note: '该任务所用模型已下线，请联系管理员确认可用模型。' });
           logger?.log('task_failed', { task: next.id, error: 'model_unavailable', model: task?.model });
           continue;
         }
-        const stages = [];
-        store.update(next.id, { status: 'running' });
-        logger?.log('queue_pick', { task: next.id, user: next.user_id });
-        try {
-          const result = await taskRunner.run(task, (name) => {
-            stages.push({ name, status: 'done' });
-            store.update(task.id, { stages });
-            logger?.log('stage_done', { task: task.id, stage: name });
-          });
-          if (result?.format === 'pi-final-text-v1') {
-            if (typeof result.text !== 'string' || !result.text.trim()) throw new Error('invalid_results');
-            const displayMarks = result.displayMarks ?? locateOpinionMarks(task.content, result.text);
-            const locationIncomplete = result.locationIncomplete || validateDisplayMarks(task.content, result.text, displayMarks) === null;
-            const status = result.incomplete || locationIncomplete ? 'partial' : 'completed';
-            // Opinions stay verbatim; display metadata is independent and must cover every number.
-            store.update(task.id, { status, result_format: result.format, result_text: result.text, usage: result.usage || {},
-              display_marks: displayMarks, location_status: locationIncomplete ? 'incomplete' : 'complete',
-              thinking_level: typeof result.thinkingLevel === 'string' ? result.thinkingLevel : '',
-              note: locationIncomplete ? '原文定位未完成；已保留校对意见，请联系管理员核查定位信息。'
-                : result.incomplete ? '技能执行未全部完成；保留 Pi 最终回答，不代表校对通过。' : '' });
-            logger?.log('task_done', { task: task.id, status, format: result.format, thinking_level: typeof result.thinkingLevel === 'string' ? result.thinkingLevel : null });
-            continue;
-          }
-          // Legacy structured runners/results remain readable; the production runner uses final text.
-          if (!result || !Array.isArray(result.issues) || !Array.isArray(result.unverified) || !Array.isArray(result.verified)) throw new Error('invalid_results');
-          const issues = validateIssues(task, result.issues);
-          const verified = validateVerified(result.verified);
-          const sources = validateSources(result.sources);
-          if (result.unverified.some(item => typeof item !== 'string' || !item.trim() || item.length > 500)) throw new Error('invalid_unverified');
-          const partial = result.unverified.length > 0;
-          logger?.log('task_done', { task: task.id, status: partial ? 'partial' : 'completed', issues: issues.length, unverified: result.unverified.length, verified: verified.length });
-          const refinedTitle = typeof result.title === 'string' ? result.title.trim() : '';
-          const fields = { status: partial ? 'partial' : 'completed', issues, unverified: result.unverified, verified, sources,
-            note: partial ? '部分意见需人工复核或事实核查未完成；搜索线索不等于已核实，待核实事项不可视为通过。' : '' };
-          if (refinedTitle && refinedTitle.length <= 60) fields.title = refinedTitle;
-          store.update(task.id, fields);
-        } catch (error) {
-          // Never convert a failed model, search or anchor validation into “无意见”.
-          logger?.log('task_failed', { task: task.id, error: error instanceof Error ? error.message : String(error) });
-          store.update(task.id, { status: 'failed', note: '校对未完成；请联系管理员核查任务记录。',
-            ...(error?.usage && typeof error.usage === 'object' ? { usage: error.usage } : {}),
-            thinking_level: typeof error?.thinkingLevel === 'string' ? error.thinkingLevel : '' });
-        }
+        activeUsers.add(next.user_id);
+        const execution = runTask(task, taskRunner, next.user_id).finally(() => {
+          active.delete(next.id);
+          activeUsers.delete(next.user_id);
+          schedule();
+        });
+        active.set(next.id, execution);
+        // runTask records normal failures; avoid an unhandled rejection if persistence itself fails.
+        void execution.catch(() => {});
       }
-    } finally { running = false; }
+    } finally { scheduling = false; }
   }
-  const kick = () => { void drain(); };
+  async function drain() {
+    schedule();
+    while (active.size) {
+      await Promise.allSettled([...active.values()]);
+      schedule();
+    }
+  }
+  const kick = () => schedule();
   async function handle(req, res) {
     const userId = verifyWorkerToken(req.headers.authorization, signingSecret);
     if (!userId) return json(res, 401, { error: 'unauthorized' });
@@ -189,12 +213,13 @@ export function createBackend({ store, runner, runners, defaultModel, balance = 
     const match = path.match(/^\/api\/proofreading\/tasks\/([^/]+)$/);
     if (match && req.method === 'GET' && UUID.test(match[1])) {
       const task = store.detail(match[1], userId);
-      if (task?.status === 'completed' && task.result_format === 'pi-final-text-v1' && task.display_marks === null) {
-        // Old completed results get deterministic locations on read; no model call or re-proofreading.
+      if (task && ['completed', 'partial'].includes(task.status) && task.result_format === 'pi-final-text-v1'
+        && validateDisplayMarks(task.content, task.result_text, task.display_marks) === null) {
+        // Repair historical null, empty or invalid locations deterministically, without model calls.
         const displayMarks = locateOpinionMarks(task.content, task.result_text);
         const complete = validateDisplayMarks(task.content, task.result_text, displayMarks) !== null;
         const fields = { display_marks: displayMarks, location_status: complete ? 'complete' : 'incomplete',
-          ...(complete ? {} : { status: 'partial', note: '原文定位未完成；已保留校对意见，请联系管理员核查定位信息。' }) };
+          ...(complete ? {} : { status: 'failed', note: '校对结果生成失败；意见与原文角标必须全部对应，任务记录已保留。' }) };
         store.update(task.id, fields);
         Object.assign(task, fields);
       }

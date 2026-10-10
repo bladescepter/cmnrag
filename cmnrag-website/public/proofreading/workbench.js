@@ -99,10 +99,10 @@ function renderReview(task) {
   if (task.result_format === "pi-final-text-v1") {
     // Final opinions and their source locations are independent of quotation typography.
     const answer = safeText(task.result_text);
-    const opinions = task.status !== "completed" ? [] : task.display_marks == null
-      ? locateOpinionMarks(content, answer)
-      : validateDisplayMarks(content, answer, task.display_marks) || locateOpinionMarks(content, answer, [], { requireLocations: true });
-    const marks = opinions.flatMap(opinion => opinion.spans.map(span => ({ ...span, number: opinion.number })));
+    const opinions = complete
+      ? validateDisplayMarks(content, answer, task.display_marks ?? locateOpinionMarks(content, answer))
+      : null;
+    const marks = (opinions || []).flatMap(opinion => opinion.spans.map(span => ({ ...span, number: opinion.number })));
     const segments = buildMarkSegments(marks);
     let base = 0, segmentIndex = 0;
     const renderedNumbers = new Set();
@@ -136,11 +136,19 @@ function renderReview(task) {
       source.append(paragraph);
       base += text.length + 1; // Original paragraphs are split on the exact newline character.
     }
-    const locatedCount = opinions.filter(opinion => renderedNumbers.has(opinion.number)).length;
-    const unlocatedCount = opinions.length - locatedCount;
+    // Deliver opinions only when every number has a visible badge on the immutable source.
+    if (opinions === null || opinions.some(opinion => !renderedNumbers.has(opinion.number))) {
+      source.replaceChildren();
+      for (const text of paragraphs) source.append(node("p", "source-paragraph", text));
+      $("source-mark-count").textContent = "只读 · 不自动改写";
+      $("finding-count").textContent = "结果尚未就绪";
+      findings.append(node("p", "empty-note", "校对结果未完成，暂不交付意见。"));
+      if (complete) $("task-status").textContent = "失败";
+      return;
+    }
     const spanCount = new Set(marks.map(mark => `${mark.start}:${mark.end}`)).size;
     $("source-mark-count").textContent = opinions.length
-      ? `意见 ${opinions.length} 条 · 划线 ${spanCount} 处${unlocatedCount ? ` · ${unlocatedCount} 条未定位（需补充定位信息）` : ""}`
+      ? `意见 ${opinions.length} 条 · 划线 ${spanCount} 处`
       : "只读 · 不自动改写";
     $("finding-count").textContent = "Pi 最终回答";
     // textContent + pre-wrap preserves every character without executing HTML or reconstructing opinions.
@@ -289,9 +297,7 @@ function renderTask(task) {
         : null;
   elapsed.hidden = duration === null;
   elapsed.textContent = duration === null ? "" : `${task.status === "queued" ? "已等待" : task.status === "running" ? "已校对" : "校对用时"} ${duration}`;
-  if (task.status === "partial") progress.append(node("p", "task-note", task.location_status === "incomplete"
-    ? "原文定位未完成；已保留校对意见，请联系管理员核查定位信息。"
-    : task.result_format === "pi-final-text-v1" ? "技能执行未全部完成；以下保留 Pi 最终回答，不代表校对通过。" : "校对尚未全部完成，当前仅列已确认错误。"));
+  if (task.status === "partial") progress.append(node("p", "task-note", "部分事实核查未完成，不代表校对通过。"));
   if (task.status === "failed" || task.status === "cancelled") progress.append(node("p", "task-note", "任务未完成，不能视为无意见。"));
   renderReview(task);
   setView("task");
@@ -398,6 +404,13 @@ setInterval(() => {
       const link = node("a", "login-link", "前往登录 →");
       link.href = `/login.html?next=${encodeURIComponent(location.pathname + location.search)}`;
       $("page-message").append(link);
+      return;
+    }
+    const account = await auth.json();
+    if (account.user?.permissions?.proofreading !== true) {
+      $("service-status").textContent = "未获授权";
+      message("此账户尚未开通测试校对权限，请联系管理员。");
+      setView("empty");
       return;
     }
     const state = await api("/availability");

@@ -29,6 +29,14 @@ describe('read-only connection recovery', () => {
     })).rejects.toThrow();
     expect(calls).toBe(1);
   });
+  it('explains missing proofreading access without retrying or submitting a model task', async () => {
+    let calls = 0;
+    await expect(requestJson('/availability', {}, {
+      fetchImpl: async () => { calls++; return Response.json({ error: 'proofreading_forbidden' }, { status: 403 }); },
+      sleep: async () => { throw new Error('must not retry'); },
+    })).rejects.toThrow('此账户尚未开通测试校对权限');
+    expect(calls).toBe(1);
+  });
   it('does not retry authentication errors or leak task identifiers on repeated failures', async () => {
     let calls = 0;
     const deps = { fetchImpl: async () => { calls++; return Response.json({}, { status: 401 }); }, sleep: async () => {} };

@@ -8,6 +8,7 @@ import { buildAnswerArticleIdQuery, buildVectorArticleFilter } from "./ai/answer
 import { buildRagSystemPrompt, buildRagUserPrompt, uniqueSourcesByArticle, type ConversationTurn, type RagSource } from "./ai/rag";
 import {
 	handleAdminAction,
+	handleAdminProofreadingAccess,
 	handleAdminUsers,
 	handleLogin,
 	handleLogout,
@@ -219,6 +220,12 @@ export default {
 				const user = await requireUser(request, env);
 				if (!user || user.role !== "admin") return error("forbidden", 403);
 				return handleAdminAction(request, env, adminMatch[1], adminMatch[2] as "approve" | "reject");
+			}
+			const proofreadingAccessMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/proofreading$/);
+			if (proofreadingAccessMatch && request.method === "POST") {
+				const user = await requireUser(request, env);
+				if (!user || user.status !== "approved" || user.role !== "admin") return error("forbidden", 403);
+				return handleAdminProofreadingAccess(request, env, proofreadingAccessMatch[1]);
 			}
 			// 校对服务所有路径先做身份、账号状态和请求边界校验；不进入档案接口。
 			if (url.pathname === "/api/proofreading" || url.pathname.startsWith("/api/proofreading/")) {

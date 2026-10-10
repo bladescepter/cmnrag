@@ -1,4 +1,4 @@
-import type { AuthUser } from "../auth";
+import { canProofread, type AuthUser } from "../auth";
 
 /** Only these paths can cross the Worker → proofreading service boundary. */
 const ROOT = "/api/proofreading";
@@ -49,6 +49,7 @@ export async function signIdentity(userId: number, secret: string, now = Date.no
 
 export async function handleProofreading(request: Request, env: Env, user: AuthUser | null): Promise<Response> {
 	if (!user || user.status !== "approved") return reply(user ? "forbidden" : "unauthorized", user ? 403 : 401);
+	if (!canProofread(user)) return reply("proofreading_forbidden", 403);
 	const requestUrl = new URL(request.url);
 	const path = requestUrl.pathname;
 	const localRequest = requestUrl.hostname === "localhost" || requestUrl.hostname === "127.0.0.1";

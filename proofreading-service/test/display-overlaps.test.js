@@ -53,7 +53,7 @@ test('native identical, containing and crossing quotes keep every badge and the 
 
 test('a located range across original newlines is rendered without duplicating text or badges', () => {
   const content = '甲乙\n丙丁';
-  const elements = render({ content, status: 'completed', result_format: 'pi-final-text-v1', result_text: '' },
+  const elements = render({ content, status: 'completed', result_format: 'pi-final-text-v1', result_text: '【文法】第1行：“甲乙”与“丙丁”；合并。' },
     () => [{ number: 1, spans: [{ start: 0, end: content.length }] }]);
   const source = elements.get('source-text');
   assert.equal(source.children.map(p => p.text()).join('\n'), content);
@@ -90,12 +90,15 @@ test('nine opinion numbers all appear on source underlines, including subtitle, 
   assert.equal(result.children.filter(el => el.className !== 'opinion-number').map(el => el.text()).join(''), result_text);
 });
 
-test('invalid stored locations cannot produce false underlines or hide unlocated opinion numbers', () => {
+test('invalid stored locations block the whole result instead of delivering opinions without source badges', () => {
   const result_text = '【文法】第1段：“原文”；修改。';
   const elements = render({ content: '原文', result_text, display_marks: [{ number: 1, spans: [{ start: 0, end: 99 }] }],
     status: 'completed', result_format: 'pi-final-text-v1' });
   assert.equal(allChildren(elements.get('source-text')).filter(el => el.className === 'native-mark').length, 0);
-  assert.match(elements.get('source-mark-count').textContent, /1 条未定位（需补充定位信息）/);
+  assert.equal(elements.get('task-status').textContent, '失败');
+  assert.equal(elements.get('findings').text(), '校对结果未完成，暂不交付意见。');
+  assert.doesNotMatch(elements.get('findings').text(), /【文法】/);
+  assert.doesNotMatch(elements.get('source-mark-count').textContent, /未定位/);
 });
 
 test('legacy overlapping findings retain separate selectable badges and highlight all covered segments', () => {

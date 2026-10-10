@@ -24,6 +24,7 @@ export async function requestJson(path, options = {}, { fetchImpl = globalThis.f
     }
     if (!response.ok) {
       if (response.status === 401) throw new Error('请先登录后使用校对工作台。');
+      if (response.status === 403 && data.error === 'proofreading_forbidden') throw new Error('此账户尚未开通测试校对权限，请联系管理员。');
       if ([502, 503, 504].includes(response.status)) throw new Error('网页连接暂不可用，正在等待恢复；不要重复提交稿件。');
       if (response.status === 413) throw new Error('稿件超过单次请求 200 KB 的传输保护上限；请拆分后提交。');
       throw new Error(typeof data.error === 'string' ? `操作未完成：${data.error}` : '操作未完成，请稍后重试。');

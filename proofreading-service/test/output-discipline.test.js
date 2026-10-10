@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { applyVerdicts } from '../src/verification.js';
 import { locate } from '../src/pi-runner.js';
-import { locateOpinionMarks, buildMarkSegments, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase } from '../../cmnrag-website/public/proofreading/display-marks.js';
+import { locateOpinionMarks, validateDisplayMarks, buildMarkSegments, OPINION_LINE, PROOFREADING_PHASES, currentProofreadingPhase } from '../../cmnrag-website/public/proofreading/display-marks.js';
 
 const source = { url: 'https://authority.example/news', title: '权威原文', snippet: '正式名称：正确机构名称。' };
 test('fact judgments publish only proven, anchored errors; correct and uncertain facts stay internal', () => {
@@ -103,16 +103,16 @@ test('native pi answers render verbatim as text without executing HTML or droppi
   };
   const script = readFileSync(new URL('../../cmnrag-website/public/proofreading/workbench.js', import.meta.url), 'utf8')
     .replace(/^import .*;\n/gm, '').split('async function refreshTask(id)')[0];
-  const context = { document, URL, requestJson: () => {}, verifyAnchor: () => ({ index: 0, start: 0, end: 2 }), locateOpinionMarks, buildMarkSegments, OPINION_LINE, task: {
+  const context = { document, URL, requestJson: () => {}, verifyAnchor: () => ({ index: 0, start: 0, end: 2 }), locateOpinionMarks, validateDisplayMarks, buildMarkSegments, OPINION_LINE, task: {
     status: 'partial', content: '第一段\n截止今天。', result_format: 'pi-final-text-v1',
-    result_text: '【文法】第2段：截止今天 → 改为：截至今天\n<img src=x onerror=alert(1)>不在任何标签内执行\n<script>bad()</script>\n【口径】末行意见\n',
+    result_text: '【文法】第2段：截止今天 → 改为：截至今天\n<img src=x onerror=alert(1)>不在任何标签内执行\n<script>bad()</script>\n末行补充说明\n',
     stages: [{ name: 'Pi 读取技能参考文件', status: 'done' }], note: '技能执行未全部完成；保留 Pi 最终回答，不代表校对通过。',
     issues: [], unverified: [], verified: [], sources: [],
   } };
   runInNewContext(script + '\nrenderTask(task);', context);
   const findings = elements.get('findings');
   const marks = () => elements.get('source-text').children.flatMap(p => p.children).filter(c => c.className === 'native-mark');
-  assert.equal(marks().length, 0); // Partial results never add underlines while proofreading is unfinished.
+  assert.deepEqual(marks().map(c => c.text()), ['截止今天']); // Verification status never removes complete source locations.
   const rendered = findings.children.map(c => c.text()).join('');
   assert.equal(elements.get('finding-count').textContent, 'Pi 最终回答');
   // 意见行前置编号徽标；徽标之外的文本节点逐字等于原始回答，不增删不改。
@@ -122,7 +122,7 @@ test('native pi answers render verbatim as text without executing HTML or droppi
   assert.deepEqual(badgeText, ['1']);
   assert.equal(verbatim, context.task.result_text);
   assert.ok(rendered.includes('截至今天'));
-  assert.ok(rendered.includes('【口径】末行意见'));
+  assert.ok(rendered.includes('末行补充说明'));
   assert.ok(verbatim.includes('\n')); // 换行原样保留，不合并、不删行
   assert.ok(rendered.includes('<img src=x onerror=alert(1)>')); // 标签只作为字符串存在
   assert.ok(rendered.includes('<script>bad()</script>')); // 从不作为 HTML 执行：渲染只走 textContent/append

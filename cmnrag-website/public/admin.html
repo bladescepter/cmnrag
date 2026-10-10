@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/site.css" />
 </head>
 <body class="admin-page">
-<header><h1>用户审批</h1><p>审批注册申请，通过后可访问内部工具。</p></header>
+<header><h1>用户审批</h1><p>审批注册申请，并为已通过的账户开通测试校对权限。</p></header>
 <main id="main"></main>
 <script>
   const main = document.getElementById("main");
@@ -56,6 +56,35 @@
       const parts = [u.display_name && "显示名：" + u.display_name, u.email && "邮箱：" + u.email, u.note && "备注：" + u.note, "申请于 " + (u.created_at || "").replace("T", " ").slice(0, 19)];
       meta.textContent = parts.filter(Boolean).join(" · ");
       row.appendChild(meta);
+      if (u.status === "approved") {
+        const permissions = document.createElement("div");
+        permissions.className = "btns";
+        if (u.role === "admin") {
+          permissions.appendChild(div("meta", "测试校对权限：管理员可用"));
+        } else {
+          const label = document.createElement("label");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = u.proofreading_enabled === 1;
+          checkbox.addEventListener("change", async () => {
+            const enabled = checkbox.checked;
+            checkbox.disabled = true;
+            try {
+              const res = await api("/api/admin/users/" + u.id + "/proofreading", { method: "POST",
+                headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled }) });
+              if (res.status !== 200) throw new Error(res.data.error || "权限修改失败");
+              u.proofreading_enabled = res.data.proofreading_enabled;
+            } catch (error) {
+              checkbox.checked = !enabled;
+              alert(error.message || "权限修改失败");
+            } finally { checkbox.disabled = false; }
+          });
+          label.appendChild(checkbox);
+          label.appendChild(document.createTextNode(" 测试校对权限"));
+          permissions.appendChild(label);
+        }
+        row.appendChild(permissions);
+      }
       if (u.rejected_reason) {
         const rr = document.createElement("div");
         rr.className = "reject-reason";

@@ -177,7 +177,7 @@ test('availability identifies offline-partial mode without starting a model task
 test('multi-model: submissions route to the selected runner; unknown models are rejected', async () => {
   const runs = [];
   const makeRunner = model => ({ ready: true, model, ruleVersion: `rv-${model}`, execution: 'pi-skill-v1',
-    run: async () => { runs.push(model); return { format: 'pi-final-text-v1', text: `回答@${model}`, incomplete: false, usage: { calls: 1, totalTokens: 10, estimatedUsd: 0, available: true } }; } });
+    run: async () => { runs.push(model); return { format: 'pi-final-text-v1', text: '无意见', incomplete: false, usage: { calls: 1, totalTokens: 10, estimatedUsd: 0, available: true } }; } });
   const store = openStore(':memory:');
   const backend = createBackend({ store, runners: { 'xiaomi/mimo-v2.6-flash': makeRunner('xiaomi/mimo-v2.6-flash'), 'deepseek/deepseek-flash': makeRunner('deepseek/deepseek-flash') }, signingSecret: secret });
   await new Promise(resolve => backend.server.listen(0, '127.0.0.1', resolve));
@@ -197,7 +197,7 @@ test('multi-model: submissions route to the selected runner; unknown models are 
     assert.equal((await poll(first.id)).model, 'xiaomi/mimo-v2.6-flash');
     const deep = await poll(second.id);
     assert.equal(deep.model, 'deepseek/deepseek-flash');
-    assert.equal(deep.result_text, '回答@deepseek/deepseek-flash');
+    assert.equal(deep.result_text, '无意见');
     assert.deepEqual(runs, ['xiaomi/mimo-v2.6-flash', 'deepseek/deepseek-flash']); // 各自路由到对应 runner
   } finally { await new Promise(resolve => backend.server.close(resolve)); store.close(); }
 });
@@ -227,7 +227,7 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
     run: async (task) => {
       runLog.push(task.id);
       if (runLog.length === 1) return { format: 'pi-final-text-v1', text: finalText, incomplete: false, thinkingLevel: 'medium', usage: { calls: 7, totalTokens: 40700, estimatedUsd: 0.06, available: true } };
-      if (runLog.length === 2) return { format: 'pi-final-text-v1', text: '未全部完成的回答', incomplete: true, usage: { calls: 3, totalTokens: 100, estimatedUsd: 0, available: false } };
+      if (runLog.length === 2) return { format: 'pi-final-text-v1', text: finalText, incomplete: true, usage: { calls: 3, totalTokens: 100, estimatedUsd: 0, available: false } };
       const failure = new Error('model_output_truncated');
       failure.usage = { calls: 13, totalTokens: 334444, estimatedUsd: 0.02, available: true };
       failure.thinkingLevel = 'medium';
@@ -250,7 +250,8 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
 
     const second = await (await app.submit()).json();
     const partial = await waitFor(path => app.request(path), second.id, 'partial');
-    assert.equal(partial.result_text, '未全部完成的回答');
+    assert.equal(partial.result_text, finalText);
+    assert.equal(partial.location_status, 'complete');
     assert.match(partial.note, /未全部完成/);
     assert.equal(partial.usage.available, false); // 估算缺失不丢回答
 
@@ -262,7 +263,7 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
   } finally { await app.close(); }
 });
 
-test('native display locations are stored separately, missing coverage stays partial, and old tasks are backfilled', async () => {
+test('native results require complete source coverage; failed results stay recorded and historical locations are repaired', async () => {
   const content = '风从海上来\n—泉州气象科普进村入户“赶路”记\n老黄说。';
   const text = '【文法】副标题：“—泉州气象科普进村入户‘赶路’记”；修改。\n【准确】第3段：“老黄缺少完整姓名”；补充姓名。';
   let calls = 0;
@@ -281,10 +282,10 @@ test('native display locations are stored separately, missing coverage stays par
     assert.equal(done.display_marks[1].spans[0].scope, 'line');
     assert.equal((await app.request(`/tasks/${first.id}`, 2)).status, 404);
     const second = await (await app.submit(1, randomUUID(), { content })).json();
-    const partial = await waitFor(path => app.request(path), second.id, 'partial');
-    assert.equal(partial.result_text, text);
-    assert.equal(partial.location_status, 'incomplete');
-    assert.match(partial.note, /定位未完成/);
+    const failed = await waitFor(path => app.request(path), second.id, 'failed');
+    assert.equal(failed.result_text, text);
+    assert.equal(failed.location_status, 'incomplete');
+    assert.match(failed.note, /意见与原文角标必须全部对应/);
     const old = app.store.create(1, randomUUID(), { title: '旧任务', content });
     app.store.update(old.id, { status: 'completed', result_format: 'pi-final-text-v1', result_text: text });
     assert.equal(app.store.detail(old.id, 1).display_marks, null);
@@ -296,9 +297,18 @@ test('native display locations are stored separately, missing coverage stays par
     const unresolvedOld = app.store.create(1, randomUUID(), { title: '无位置的旧任务', content });
     app.store.update(unresolvedOld.id, { status: 'completed', result_format: 'pi-final-text-v1', result_text: '【准确】第99段：“无法确认位置”；核对。' });
     const unresolvedHistory = await (await app.request(`/tasks/${unresolvedOld.id}`)).json();
-    assert.equal(unresolvedHistory.status, 'partial');
+    assert.equal(unresolvedHistory.status, 'failed');
     assert.equal(unresolvedHistory.location_status, 'incomplete');
-    assert.match(unresolvedHistory.note, /定位未完成/);
+    assert.match(unresolvedHistory.note, /意见与原文角标必须全部对应/);
+    const emptyMarksOld = app.store.create(1, randomUUID(), { title: '行号意见被漏识别的旧任务', content });
+    const lineText = '【文法】第2行：“—泉州气象科普进村入户‘赶路’记”；修改。\n【准确】第3行：“老黄缺少完整姓名”；补充姓名。';
+    app.store.update(emptyMarksOld.id, { status: 'completed', result_format: 'pi-final-text-v1', result_text: lineText,
+      display_marks: [], location_status: 'complete' });
+    const repaired = await (await app.request(`/tasks/${emptyMarksOld.id}`)).json();
+    assert.equal(repaired.status, 'completed');
+    assert.equal(repaired.display_marks.length, 2);
+    assert.equal(repaired.location_status, 'complete');
+    assert.equal(repaired.result_text, lineText);
     assert.equal(calls, 2); // Reading or backfilling old results never invokes proofreading.
   } finally { await app.close(); }
 });
