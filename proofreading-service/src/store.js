@@ -30,6 +30,7 @@ export function openStore(filename) {
   if (!columns.has('display_marks')) db.exec('ALTER TABLE tasks ADD COLUMN display_marks TEXT');
   if (!columns.has('location_status')) db.exec("ALTER TABLE tasks ADD COLUMN location_status TEXT NOT NULL DEFAULT ''");
   if (!columns.has('usage')) db.exec("ALTER TABLE tasks ADD COLUMN usage TEXT NOT NULL DEFAULT '{}' ");
+  if (!columns.has('pi_version')) db.exec("ALTER TABLE tasks ADD COLUMN pi_version TEXT NOT NULL DEFAULT ''");
   if (!columns.has('thinking_level')) db.exec("ALTER TABLE tasks ADD COLUMN thinking_level TEXT NOT NULL DEFAULT ''");
   if (!columns.has('started_at')) db.exec('ALTER TABLE tasks ADD COLUMN started_at TEXT');
   if (!columns.has('finished_at')) db.exec('ALTER TABLE tasks ADD COLUMN finished_at TEXT');
@@ -45,7 +46,7 @@ export function openStore(filename) {
       content: row.content, status: row.status, result_text: row.result_text, result_format: row.result_format,
       display_marks: row.display_marks === null ? null : JSON.parse(row.display_marks), location_status: row.location_status,
       usage: JSON.parse(row.usage || '{}'),
-      thinking_level: row.thinking_level ?? '',
+      pi_version: row.pi_version ?? '', thinking_level: row.thinking_level ?? '',
       stages: JSON.parse(row.stages), issues: JSON.parse(row.issues), unverified: JSON.parse(row.unverified), verified: JSON.parse(row.verified ?? '[]'), sources: JSON.parse(row.sources ?? '[]'), note: row.note };
   }
   return {
@@ -77,7 +78,7 @@ export function openStore(filename) {
       } catch (error) { db.exec('ROLLBACK'); throw error; }
     },
     update(id, fields) {
-      const allowed = ['status', 'stages', 'issues', 'unverified', 'note', 'title', 'verified', 'sources', 'result_text', 'result_format', 'display_marks', 'location_status', 'usage', 'thinking_level'];
+      const allowed = ['status', 'stages', 'issues', 'unverified', 'note', 'title', 'verified', 'sources', 'result_text', 'result_format', 'display_marks', 'location_status', 'usage', 'thinking_level', 'pi_version'];
       const entries = Object.entries(fields).filter(([key]) => allowed.includes(key));
       if (!entries.length) return;
       const now = new Date().toISOString();

@@ -26,7 +26,7 @@ export async function createPiRunner({ rulesDir, stateDir, provider, modelId, ap
   const hash = createHash('sha256').update('pi-skill-v1-display-locations-v3-copy\0');
   RULE_FILES.forEach((file, index) => hash.update(file).update(snapshot[index]));
   const ruleVersion = hash.digest('hex');
-  const { createAgentSession, createExtensionRuntime, createSyntheticSourceInfo, ModelRuntime, SessionManager, SettingsManager } = await import('@earendil-works/pi-coding-agent');
+  const { createAgentSession, createExtensionRuntime, createSyntheticSourceInfo, ModelRuntime, SessionManager, SettingsManager, VERSION } = await import('@earendil-works/pi-coding-agent');
   const modelRuntime = await ModelRuntime.create({ authPath: join(stateDir, 'auth.json'), modelsPath: join(stateDir, 'models.json') });
   await modelRuntime.setRuntimeApiKey(provider, apiKey);
   const catalogModel = modelRuntime.getModel(provider, modelId);
@@ -38,7 +38,7 @@ export async function createPiRunner({ rulesDir, stateDir, provider, modelId, ap
   await mkdir(workspaces, { recursive: true, mode: 0o700 });
   return {
     ready: true, offlinePartial, online: Boolean(search), ruleVersion, model: `${provider}/${modelId}`, maxDraftChars,
-    execution: 'pi-skill-v1',
+    execution: 'pi-skill-v1', piVersion: VERSION,
     async run(task, onStage = () => {}) {
       if (task.rule_version !== ruleVersion || task.model !== `${provider}/${modelId}`) throw new Error('runner_version_changed');
       if (typeof task.content !== 'string' || !task.content.trim() || (Number.isSafeInteger(maxDraftChars) && task.content.length > maxDraftChars)) throw new Error('test_draft_too_long');
@@ -46,7 +46,7 @@ export async function createPiRunner({ rulesDir, stateDir, provider, modelId, ap
       const skillDir = join(directory, '.pi', 'skills', 'proofreading');
       const budget = testBudget ? createTestBudget() : createWebBudget();
       let session, fatalCode, lastAssistant, usageAvailable = true, locationOnly = false, locationCalls = 0;
-      logger?.log('run_start', { task: task.id, chars: task.content.length, model: task.model, execution: 'pi-skill-v1' });
+      logger?.log('run_start', { task: task.id, chars: task.content.length, model: task.model, execution: 'pi-skill-v1', pi_version: VERSION });
       try {
         for (let i = 0; i < RULE_FILES.length; i++) {
           const file = join(skillDir, RULE_FILES[i]);

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { locateOpinionMarks } from '../../cmnrag-website/public/proofreading/display-marks.js';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -223,7 +224,7 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
   const finalText = '【文法】第2段：截止今天 -> 改为：截至今天\n（依据：典型错误案例）\n';
   const runLog = [];
   const app = await setup({
-    ready: true, offlinePartial: true, online: true, execution: 'pi-skill-v1',
+    ready: true, offlinePartial: true, online: true, execution: 'pi-skill-v1', piVersion: '1.1.0',
     run: async (task) => {
       runLog.push(task.id);
       if (runLog.length === 1) return { format: 'pi-final-text-v1', text: finalText, incomplete: false, thinkingLevel: 'medium', usage: { calls: 7, totalTokens: 40700, estimatedUsd: 0.06, available: true } };
@@ -238,6 +239,7 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
     const first = await (await app.submit()).json();
     const done = await waitFor(path => app.request(path), first.id, 'completed');
     assert.equal(done.result_format, 'pi-final-text-v1');
+    assert.equal(done.pi_version, '1.1.0');
     assert.equal(done.thinking_level, 'medium'); // 实际思考级别随任务入库，供对照实验与审计。
     assert.equal(done.result_text, finalText); // 逐字保存，含换行
     assert.ok(Number.isFinite(Date.parse(done.created_at)));
@@ -250,6 +252,7 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
 
     const second = await (await app.submit()).json();
     const partial = await waitFor(path => app.request(path), second.id, 'partial');
+    assert.equal(partial.pi_version, '1.1.0');
     assert.equal(partial.result_text, finalText);
     assert.equal(partial.location_status, 'complete');
     assert.match(partial.note, /未全部完成/);
@@ -258,6 +261,7 @@ test('native pi-final-text-v1 answers are stored verbatim; incomplete stays part
     const third = await (await app.submit()).json();
     const failed = await waitFor(path => app.request(path), third.id, 'failed');
     assert.equal(failed.result_text, '');
+    assert.equal(failed.pi_version, '1.1.0');
     assert.equal(failed.thinking_level, 'medium'); // 失败也记录思考级别
     assert.deepEqual(failed.usage, { calls: 13, totalTokens: 334444, estimatedUsd: 0.02, available: true }); // 失败也保留已累计用量
   } finally { await app.close(); }
@@ -376,6 +380,35 @@ test('unconfigured runner refuses submissions; browser test accepts repeated sub
     assert.equal((await app.submit(2)).status, 202);
     assert.equal((await app.submit(1, randomUUID(), { content: '稿'.repeat(210_000) })).status, 413); // 传输保护上限，非业务字符数限制
   } finally { await app.close(); }
+});
+
+test('oversized chunked uploads receive 413 before the upload ends and never create a task', async () => {
+  let runs = 0, upload;
+  const app = await setup({ ready: true, run: async () => { runs++; throw new Error('must not run'); } });
+  try {
+    const response = await new Promise((resolve, reject) => {
+      upload = http.request(`http://127.0.0.1:${app.backend.server.address().port}/api/proofreading/tasks`, {
+        method: 'POST', headers: { 'content-type': 'application/json',
+          authorization: `Bearer ${signTestToken(1, secret)}`, 'x-idempotency-key': randomUUID() },
+      }, res => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', chunk => { body += chunk; });
+        res.on('error', reject);
+        res.on('end', () => resolve({ status: res.statusCode, connection: res.headers.connection, body }));
+      });
+      upload.on('error', reject);
+      upload.setTimeout(2000, () => upload.destroy(new Error('oversized upload did not receive a response')));
+      // No Content-Length and no end(): the server must reject an unfinished chunked body.
+      upload.write(Buffer.alloc(200_001, 'x'));
+    });
+    assert.equal(response.status, 413);
+    assert.equal(response.connection, 'close');
+    assert.deepEqual(JSON.parse(response.body), { error: 'request_too_large' });
+    assert.equal(runs, 0);
+    assert.deepEqual(app.store.list(1), []);
+    assert.equal((await app.request('/availability')).status, 200);
+  } finally { upload?.destroy(); await app.close(); }
 });
 
 test('history retention keeps only the newest ten tasks per user, never touching active tasks', () => {

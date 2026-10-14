@@ -61,6 +61,6 @@ const store = openStore(join(stateDir, 'tasks.sqlite'));
 const service = createBackend({
   store, runners, balance, signingSecret: secret, logger: diagnostics,
 });
-diagnostics?.log('backend_start', { port, host, models: Object.keys(runners), rule_version: Object.values(runners)[0]?.ruleVersion || '', online: Boolean(search) });
+diagnostics?.log('backend_start', { port, host, models: Object.keys(runners), rule_version: Object.values(runners)[0]?.ruleVersion || '', pi_version: Object.values(runners)[0]?.piVersion || '', online: Boolean(search) });
 service.server.listen(port, host, () => { console.log(`Proofreading service listening on ${host}:${port}; models ${Object.keys(runners).join(', ')}`); service.kick(); });
 // Secrets, manuscript text, prompts and full model outputs must never be logged.

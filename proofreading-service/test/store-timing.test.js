@@ -63,16 +63,18 @@ test('timestamps survive reopening; migration preserves legacy results without i
   try {
     const { id } = store.create(1, randomUUID(), manuscript);
     store.update(id, { status: 'running' });
-    store.update(id, { status: 'completed', result_text: '原始结果' });
+    store.update(id, { status: 'completed', result_text: '原始结果', pi_version: '1.1.0' });
     const completed = store.detail(id, 1);
     store.close();
     store = openStore(filename);
     assert.deepEqual(store.detail(id, 1), completed);
     // 在独立测试库模拟升级前的 schema；不接触业务数据。
-    store.db.exec('ALTER TABLE tasks DROP COLUMN started_at; ALTER TABLE tasks DROP COLUMN finished_at;');
+    assert.equal(completed.pi_version, '1.1.0');
+    store.db.exec('ALTER TABLE tasks DROP COLUMN started_at; ALTER TABLE tasks DROP COLUMN finished_at; ALTER TABLE tasks DROP COLUMN pi_version;');
     store.close();
     store = openStore(filename);
     const migrated = store.detail(id, 1);
+    assert.equal(migrated.pi_version, ''); // Unknown historical SDK versions stay unknown.
     assert.equal(migrated.started_at, null);
     assert.equal(migrated.finished_at, null);
     assert.equal(migrated.result_text, completed.result_text);

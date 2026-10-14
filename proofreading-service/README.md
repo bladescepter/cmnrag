@@ -1,6 +1,6 @@
 # 校对后台
 
-Node.js ≥22.19、Pi SDK 固定 0.87.1。**版本库不提交**真实稿件、API Key 或部署参数。本地开发使用回环监听；生产容器仅在 Docker 内网监听，经 VPS Caddy HTTPS 反代到 Worker。接口约定在 `../cmnrag-website/PROOFREADING-API.md`。
+Node.js ≥22.19、Pi SDK 固定 1.1.0。**版本库不提交**真实稿件、API Key 或部署参数。本地开发使用回环监听；生产容器仅在 Docker 内网监听，经 VPS Caddy HTTPS 反代到 Worker。接口约定在 `../cmnrag-website/PROOFREADING-API.md`。
 
 ## 当前已实现（原生 Pi 技能执行器 `pi-skill-v1`）
 
@@ -19,6 +19,14 @@ Node.js ≥22.19、Pi SDK 固定 0.87.1。**版本库不提交**真实稿件、A
 `npm ci && npm test`。启动前由操作者在安全的运行环境提供 `PROOFREADING_SIGNING_SECRET`（至少 32 字符，与 Worker secret `PROOFREADING_SIGNING_SECRET` 相同）、`PROOFREADING_RULES_DIR`（**已审定、只读**技能包目录）、`PROOFREADING_STATE_DIR`、`PROOFREADING_MODELS=deepseek/deepseek-flash`（`.env` 首行，目录顺序决定默认模型；实测后已下线较慢的小米 MiMo，密钥备份在本机 data/env-backups/），以及对应的 `PROOFREADING_API_KEY_<大写提供商>`（如 `PROOFREADING_API_KEY_DEEPSEEK`）；TinyFish 使用 `PROOFREADING_TINYFISH_API_KEY`。未配置密钥的模型不展示；页面选模型后按任务入队。未设置目录时仍兼容旧的单模型 `PROOFREADING_MODEL_PROVIDER` / `_ID` / `_API_KEY`，可选 `PROOFREADING_THINKING_LEVEL`（未设置时用该版本 Pi 默认，不强制关闭）。模型标识必须是已在 Pi 中核实的精确提供商/ID；不能把讨论中的展示名称直接填入。后台默认 `127.0.0.1:8788`；容器内部可用 `0.0.0.0`，但不发布宿主端口，只允许内网反代。
 
 **默认不接受稿件**。仅限隔离环境下用去敏样本测试时，显式设置 `PROOFREADING_ENABLE_OFFLINE_PARTIAL=1`。本机网页试运行不设置每日篇数或 4000 字符的业务限制；每次提交仍须确认模型费用（原生工具循环可能产生多轮调用），HTTP 请求保留 200 KB 的传输保护上限。进程应使用专用低权限 OS 用户；状态目录仅该用户可读（0700），不可挂载用户个人 Pi 目录、仓库 `.env` 或其他项目。
+
+### Pi SDK 更新
+
+校对后台的 Pi 内核由本目录 `package.json` 和 `package-lock.json` 固定，独立于开发机 Pi CLI 及其扩展；`pi update --extensions` 不更新后台。升级时安装明确版本（当前 `npm install --ignore-scripts --save-exact @earendil-works/pi-coding-agent@1.1.0`），提交依赖清单、锁文件和版本文档，以 `npm ci --ignore-scripts` 复现依赖。验证开发机与 Node 22 下的 `npm test`，真实校对质量与耗时须另做同配置对照。
+
+启动日志 `backend_start`、每稿 `run_start` 记录实际 `pi_version`；任务开始执行时保存相同字段，失败时也保留。排队中及历史未知版本留空，不推测补写。服务更新前备份状态库，确认 `queued` 和 `running` 都为零，再重启本机后台或重建并切换带版本标签的容器；保留旧版本作为回滚依据。
+
+2026-10-12 已发布到线上校对后台，镜像为 `proofreading-backend:20261012-110101-pi110`（Pi 1.1.0 / Node 22.23.3）。镜像内 90 项测试全部通过；网站登录态可用性、历史任务接口与健康检查通过，升级前 11 条任务的状态、原稿和结果核对一致。本次复用已上线的 Worker 与前端，更新后台容器。回滚容器为 `proofreading-backend-before-20261012-110101-pi110`；状态库、规则、环境文件和旧容器参数备份在 VPS `/opt/data/proofreading/backups/20261012-110101-pi110/`。本次未提交真实稿件进行付费对照。
 
 ### 本机单篇试运行（测试 Key，非网站上线）
 
@@ -50,10 +58,10 @@ npm run dev:web
 
 部署目标为腾讯云香港 VPS（Caddy + `hermes-net` 反代模式，公网入口 `https://proofreading.xiyuan.wiki`）。要点：
 
-1. **镜像**：`proofreading-service/Dockerfile`（Node 22 + Pi SDK 0.87.1）。从仓库根目录执行 `docker build -f proofreading-service/Dockerfile -t cmnrag-proofreading .`，以便后端与网页复用同一定位模块；配套 `Dockerfile.dockerignore` 只允许服务源码、依赖清单与网页定位模块进入构建上下文，不包含密钥、档案、任务数据与测试。端口不发布到宿主公网，仅 `hermes-net` 内可达。
+1. **镜像**：`proofreading-service/Dockerfile`（Node 22 + Pi SDK 1.1.0）。从仓库根目录执行 `docker build -f proofreading-service/Dockerfile -t cmnrag-proofreading:pi-1.1.0 .`，以便后端与网页复用同一定位模块；配套 `Dockerfile.dockerignore` 只允许服务源码、依赖清单与网页定位模块进入构建上下文，不包含密钥、档案、任务数据与测试。端口不发布到宿主公网，仅 `hermes-net` 内可达。
 2. **监听**：容器内 `PROOFREADING_HOST=0.0.0.0`（`bind-host.js` 白名单允许回环/通配/RFC1918 私网；公网地址与域名一律拒绝）；公网流量只经 Caddy TLS 反代进入。
 3. **挂载**：`/app/data` 为持久卷（任务库与诊断日志）；`/app/rules` 为技能包 bind mount（宿主目录 rsync 更新）；密钥经挂载的 `.env`（600 权限）提供。
-4. **权威文件更新流程**（已确认）：本地修改独立仓库 `/home/blade/Projects/proofreading/.pi/skills/proofreading/` → 在该仓库 git 提交推送（审核留痕）→ rsync 到 VPS `/opt/data/proofreading/rules/` → 空闲期重启容器（确认无 running 任务）→ 抽查验证。新规则指纹写入 `backend_start` 诊断日志，便于核对线上版本。
+4. **权威文件更新流程**（已确认）：本地修改独立仓库 `/home/blade/Projects/proofreading/.pi/skills/proofreading/` → 在该仓库 git 提交推送（审核留痕）→ rsync 到 VPS `/opt/data/proofreading/rules/` → 空闲期重启容器（确认无 queued/running 任务）→ 抽查验证。新规则指纹写入 `backend_start` 诊断日志，便于核对线上版本。
 5. **Worker 侧**：配置 `PROOFREADING_BACKEND_URL=https://proofreading.xiyuan.wiki/`，按仓库根 AGENTS.md 流程 dry-run 后部署；全链路验收含 `/availability`、真实提交与余额显示。
 
 ## 与本地效果的差异声明

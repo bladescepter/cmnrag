@@ -33,7 +33,8 @@ async function readJson(req) {
   if (!/^application\/json(?:\s*;|\s*$)/i.test(req.headers['content-type'] || '')) throw new Error('invalid_content_type');
   let size = 0;
   const chunks = [];
-  for await (const chunk of req) {
+  // Keep the request socket alive on early exit so an oversized body receives its 413 response.
+  for await (const chunk of req.iterator({ destroyOnReturn: false })) {
     size += chunk.length;
     if (size > 200_000) throw new Error('request_too_large');
     chunks.push(chunk);
@@ -99,7 +100,7 @@ export function createBackend({ store, runner, runners, defaultModel, balance = 
   let scheduling = false;
   async function runTask(task, taskRunner, userId) {
     const stages = [];
-    store.update(task.id, { status: 'running' });
+    store.update(task.id, { status: 'running', pi_version: taskRunner.piVersion || '' });
     logger?.log('queue_pick', { task: task.id, user: userId });
     try {
       const result = await taskRunner.run(task, (name) => {
@@ -192,7 +193,12 @@ export function createBackend({ store, runner, runners, defaultModel, balance = 
       const key = req.headers['x-idempotency-key'];
       if (typeof key !== 'string' || !UUID.test(key)) return json(res, 400, { error: 'invalid_idempotency_key' });
       let body;
-      try { body = await readJson(req); } catch (error) { return json(res, error.message === 'request_too_large' ? 413 : 400, { error: error.message }); }
+      try { body = await readJson(req); } catch (error) {
+        // Discard unread bytes without buffering them; close after sending the error response.
+        req.resume();
+        res.setHeader('connection', 'close');
+        return json(res, error.message === 'request_too_large' ? 413 : 400, { error: error.message });
+      }
       const input = validateInput(body);
       if (!input) return json(res, 400, { error: 'invalid_input' });
       // 模型只能从预配置清单中选择；未指定时用默认模型，避免任意 provider/地址注入。

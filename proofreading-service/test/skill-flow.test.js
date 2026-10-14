@@ -4,6 +4,7 @@ import http from 'node:http';
 import { mkdtemp, mkdir, writeFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { VERSION } from '@earendil-works/pi-coding-agent';
 import { createPiRunner, RULE_FILES } from '../src/pi-runner.js';
 
 const draft = '虚构标题\n截止今天发布。';
@@ -73,6 +74,7 @@ test('native skill returns verbatim opinions plus source lines in the same final
       search: { async search(query) { searches++; return [{ title: '测试来源', url: 'https://authority.example/item', snippet: '官方名称及原文' }]; } },
     };
     const productionRunner = await createPiRunner({ ...options, offlinePartial: false });
+    assert.equal(productionRunner.piVersion, VERSION);
     assert.equal(productionRunner.ready, true); // 有搜索能力时不要求启用隔离测试的离线开关。
     assert.equal(productionRunner.online, true);
     assert.equal(productionRunner.offlinePartial, false);
@@ -100,6 +102,7 @@ test('native skill returns verbatim opinions plus source lines in the same final
     const searchLog = logs.filter(entry => entry.event === 'search_queries');
     assert.equal(searchLog.length, 1);
     assert.deepEqual(searchLog[0].queries, ['虚构机构 官方名称', '虚构活动 官方主题']); // 查询词入日志（测试阶段行为核查）
+    assert.equal(logs.find(entry => entry.event === 'run_start').pi_version, VERSION);
     assert.doesNotMatch(JSON.stringify(logs), /截止今天|官方名称及原文|sk-local-fake/); // 稿件、搜索材料与密钥仍不入日志
     assert.deepEqual(await readdir(join(stateDir, 'workspaces')), []);
 
