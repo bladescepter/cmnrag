@@ -10,8 +10,14 @@
 清单（cmnrag/column_test/YYYYMMDD_regions.json）每条:
   {"key": "一版/01", "page": "一版", "file": "01-xxx.md", "title": "...",
    "excerpt": "正文开头", "region": ""}
-当前 LLM 读正文后填写 region：聚焦某地 → 省级开头的完整行政路径（如"广西壮族自治区百色市乐业县"）；
-全国性/跨省/中国以外 → 留空；举例提到的地名不算，看全文主体。
+当前 LLM 按全文报道主体填写 region，字段语义以 cmnrag/FRONTMATTER.md 为准：
+聚焦一个地方 → 省级开头的完整行政路径（如"广西壮族自治区百色市乐业县"）；
+多个明确合作、联防联控地区 → 即使跨省也逐项填写，多项用分号"；"分隔，--apply 写为 YAML list。
+例如通武廊："北京市通州区；天津市武清区；河北省廊坊市"；
+龙岩梅州："福建省龙岩市；广东省梅州市"，江西寻乌仅为上游预警来源，不列入。
+聚焦机构或项目所在地时，不自动把全部共建或合作方所在地列为主体。
+全国性或跨区域综述、各地案例汇总、CMA 本级事项、中国以外或主体地区不明确 → 留空；
+举例、背景、会议举办地、采访对象所在地和信息来源地名不自动列入。
 --apply 只写 region 仍为空的稿件，已有值一律保留（不覆盖审核结果）。
 数据根默认仓库内 cmnrag/，可用 CMNRAG_DATA_DIR 覆盖。
 """
@@ -93,7 +99,7 @@ def main(date_str):
     for item in items:
         print(f"  {item['key']}  {item['title'][:34]}")
         print(f"        {item['excerpt'][:110]}")
-    print("\n下一步：当前 LLM 读正文填写 region（省级开头的完整路径；不聚焦具体地区留空），再运行")
+    print("\n下一步：当前 LLM 按全文主体填写 region（省级开头的完整路径；多个明确合作地区即使跨省也用分号分隔；无明确地方主体留空），再运行")
     print(f"  python scripts/enrich_regions.py --apply {date_str}")
 
 

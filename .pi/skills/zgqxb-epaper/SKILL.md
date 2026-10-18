@@ -18,7 +18,7 @@ tags: [epaper, 中国气象报, newspaper, rag-pipeline]
    当前 LLM 读图注概括 8-12 字短语填入 title，再
      python scripts/fetch_epaper.py --apply-titles YYYYMMDD   # 回写 frontmatter title 与文件名
 2. 地区（当前 LLM）  python scripts/enrich_regions.py YYYYMMDD      # 输出待判清单 JSON
-                    当前 LLM 读正文填写 region（省级开头完整路径；不聚焦具体地区留空）
+                    当前 LLM 按正文主体填写 region（省级开头完整路径；多个明确合作地区即使跨省也逐项填写；无明确地方主体留空）
                     python scripts/enrich_regions.py --apply YYYYMMDD # 写入并过闸门
 3. 栏目识别（当前 LLM 直接读图；脚本不含任何模型调用，识别后直接写入稿件）
    a. python scripts/column_detect.py YYYYMMDD   # 下载版面图到 cmnrag/column_test/
@@ -126,7 +126,11 @@ tags: [epaper, 中国气象报, newspaper, rag-pipeline]
 - `detailData`：`docTitle`、`docAuthor`、`yt`（引题）、`fb`（副题）、`txs`（字数）、`content`（正文HTML）、`ctpath`（配图）、`ts`（图片说明）
 - **标题以 `detailData.docTitle` 为准**（`DOCTITLE` 可能不一致）；写入 frontmatter 和文件名之前统一清理 HTML 实体，字面字符串 `&nbsp;` 必须去掉/转为普通空格，禁止进入标题
 - `column` 是纯视觉元素（版面标签条），**API 不提供**（`CS` 字段大多为空）；版面名（要闻/综合/党建…）不是栏目名，引题不是栏目名
-- `region` 由当前 LLM 依据正文判读；聚焦某地 → 完整行政路径（省+市+县）；全国性/跨省/CMA 本级 → 留空
+- `region` 由当前 LLM 按全文报道主体判定，字段语义以 `cmnrag/FRONTMATTER.md` 为准。先确定主体，再判断填写一项、多项还是留空；跨省本身不构成留空条件。
+  - 聚焦一个地方事项、机构或项目：填写主体所在地的完整行政路径（省级开头，精确到正文明确的层级）。机构跨地共建，不自动把所有共建地区列为主体。
+  - 多个明确的合作、联防联控或共同服务地区：即使跨省也逐项填写，如通武廊填写北京市通州区、天津市武清区、河北省廊坊市；龙岩梅州合作填写福建省龙岩市、广东省梅州市。
+  - 全国性或跨区域天气综述、各地案例汇总、CMA 本级事项或主体地区不明确：留空。举例、背景、会议举办地、采访对象所在地、上游预警等信息来源中的地名不自动列入。
+  - 地区清单 JSON 的 `region` 中，多项用分号 `；` 分隔；`enrich_regions.py --apply` 将各项写成 YAML 块式 list。
 
 ## 正文清洗
 
