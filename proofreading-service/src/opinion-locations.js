@@ -1,4 +1,4 @@
-import { locateOpinionMarks, sourceLines, validateDisplayMarks } from '../../cmnrag-website/public/proofreading/display-marks.js';
+import { OPINION_LINE, locateOpinionMarks, sourceLines, validateDisplayMarks } from '../../cmnrag-website/public/proofreading/display-marks.js';
 
 export const LOCATION_INSTRUCTIONS = [
   '网页需要每条最终意见与原稿位置对应。意见正文仍严格采用校对技能的自然文本格式，不修改校对判断或输出无错项。',
@@ -19,6 +19,14 @@ export function splitLocatedAnswer(raw) {
     const locations = JSON.parse(raw.slice(marker.index + marker[0].length, end));
     return { text, locations: Array.isArray(locations) ? locations : [] };
   } catch { return { text, locations: [] }; }
+}
+
+// A no-opinion verdict is displayed as exactly “无意见”; preceding read-through notes are dropped.
+export function normalizeNoOpinion(text) {
+  const lines = text.split(/\r?\n/);
+  if (lines.some(line => OPINION_LINE.test(line))) return text;
+  const last = lines.map(line => line.trim()).filter(Boolean).at(-1);
+  return last === '无意见' ? '无意见' : text;
 }
 
 export function numberedManuscript(content) {

@@ -23,6 +23,7 @@ function respond(res, step, mode, repair = false) {
   const footer = '\n<proofreading-locations>\n[{"number":1,"lines":[2]}]\n</proofreading-locations>';
   const response = repair ? '<proofreading-locations>\n' + (mode === 'repair-invalid' ? '[{"number":1,"lines":[999]}]' : '[{"number":1,"lines":[2]}]') + '\n</proofreading-locations>'
     : mode === 'clean' ? '无意见\n<proofreading-locations>\n[]\n</proofreading-locations>'
+    : mode === 'clean-verbose' ? '四遍通读完成，未发现可证明的错误。\n\n无意见\n<proofreading-locations>\n[]\n</proofreading-locations>'
     : mode === 'line-label' ? finalText.replace('第2段', '第2行')
     : mode === 'repair-malformed' ? finalText.replace('第2段', '位置待定')
     : mode.startsWith('repair-') ? finalText : finalText + footer;
@@ -108,6 +109,11 @@ test('native skill returns verbatim opinions plus source lines in the same final
 
     mode = 'clean';
     assert.equal((await runner.run(task)).text, '无意见');
+    mode = 'clean-verbose';
+    const verbose = await runner.run(task);
+    assert.equal(verbose.text, '无意见'); // 无意见前的通读说明不展示
+    assert.equal(verbose.locationIncomplete, false);
+    assert.equal(verbose.locationRepair, false);
     mode = 'usage-missing';
     const unpriced = await runner.run(task);
     assert.equal(unpriced.text, finalText);

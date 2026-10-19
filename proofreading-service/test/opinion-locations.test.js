@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { numberedManuscript, splitLocatedAnswer, resolveDisplayMarks, marksComplete } from '../src/opinion-locations.js';
+import { numberedManuscript, normalizeNoOpinion, splitLocatedAnswer, resolveDisplayMarks, marksComplete } from '../src/opinion-locations.js';
 import { locateOpinionMarks, sourceLines, validateDisplayMarks } from '../../cmnrag-website/public/proofreading/display-marks.js';
 
 const locations = (number, ...lines) => ({ number, lines });
@@ -142,4 +142,13 @@ test('historical subtitle labels and bracket insertions receive locations withou
   assert.deepEqual(marks.map(opinion => opinion.spans.map(span => original.slice(span.start, span.end))), [
     ['—泉州气象科普进村入户“赶路”记'], ['联合省水务厅发布预警'],
   ]);
+});
+
+test('no-opinion verdict with preceding notes is normalized to exactly 无意见; real opinions are untouched', () => {
+  assert.equal(normalizeNoOpinion('四遍通读完成。\n\n无意见\n'), '无意见');
+  assert.equal(normalizeNoOpinion('说明。\r\n\r\n  无意见  '), '无意见');
+  const withOpinion = '【文法】第2行：“截止”；改为“截至”。\n\n无意见';
+  assert.equal(normalizeNoOpinion(withOpinion), withOpinion);
+  assert.equal(normalizeNoOpinion('审核完成，没有问题。'), '审核完成，没有问题。');
+  assert.equal(normalizeNoOpinion('无意见。说明'), '无意见。说明');
 });

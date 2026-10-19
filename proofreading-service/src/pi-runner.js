@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { createTestBudget, createWebBudget } from './limits.js';
 import { createSkillTools } from './skill-tools.js';
-import { LOCATION_INSTRUCTIONS, numberedManuscript, splitLocatedAnswer, resolveDisplayMarks, marksComplete, locationRepairPrompt } from './opinion-locations.js';
+import { LOCATION_INSTRUCTIONS, numberedManuscript, splitLocatedAnswer, normalizeNoOpinion, resolveDisplayMarks, marksComplete, locationRepairPrompt } from './opinion-locations.js';
 // Compatibility for old stored-result regression tests; never used by the native executor.
 export { locate } from './legacy-anchors.js';
 
@@ -112,7 +112,8 @@ export async function createPiRunner({ rulesDir, stateDir, provider, modelId, ap
           if (!raw.trim()) throw new Error('empty_model_response');
           return raw;
         };
-        const answer = splitLocatedAnswer(finalText());
+        const split = splitLocatedAnswer(finalText());
+        const answer = { ...split, text: normalizeNoOpinion(split.text) };
         if (!answer.text.trim()) throw new Error('empty_model_response');
         let displayMarks = resolveDisplayMarks(task.content, answer.text, answer.locations);
         let locationRepair = false;
