@@ -63,7 +63,7 @@ npm run dev:web
 1. **镜像**：`proofreading-service/Dockerfile`（Node 22 + Pi SDK 1.1.0）。从仓库根目录执行 `docker build -f proofreading-service/Dockerfile -t cmnrag-proofreading:pi-1.1.0 .`，以便后端与网页复用同一定位模块；配套 `Dockerfile.dockerignore` 只允许服务源码、依赖清单与网页定位模块进入构建上下文，不包含密钥、档案、任务数据与测试。端口不发布到宿主公网，仅 `hermes-net` 内可达。
 2. **监听**：容器内 `PROOFREADING_HOST=0.0.0.0`（`bind-host.js` 白名单允许回环/通配/RFC1918 私网；公网地址与域名一律拒绝）；公网流量只经 Caddy TLS 反代进入。
 3. **挂载**：`/app/data` 为持久卷（任务库与诊断日志）；`/app/rules` 为技能包 bind mount（宿主目录 rsync 更新）；密钥经挂载的 `.env`（600 权限）提供。
-4. **权威文件更新流程**（已确认）：本地修改独立仓库 `/home/blade/Projects/proofreading/.pi/skills/proofreading/` → 在该仓库 git 提交推送（审核留痕）→ rsync 到 VPS `/opt/data/proofreading/rules/` → 空闲期重启容器（确认无 queued/running 任务）→ 抽查验证。新规则指纹写入 `backend_start` 诊断日志，便于核对线上版本。
+4. **权威文件更新流程**（已确认）：本地修改独立仓库 `/home/blade/Projects/proofreading/.pi/skills/proofreading/` → 在该仓库 git 提交推送（审核留痕）→ 在该仓库执行 `bash scripts/publish-rules.sh` 演练，确认后加 `--apply` 发布（脚本完成 CRLF 检查、空闲检查、备份、rsync、重启、指纹与扫描核对；不再手工 rsync）。新规则指纹写入 `backend_start` 诊断日志，便于核对线上版本；`src/pi-runner.js` 的 `RULE_FILES` 或指纹算法变更时，须同步修改发布脚本。
 5. **Worker 侧**：配置 `PROOFREADING_BACKEND_URL=https://proofreading.xiyuan.wiki/`，按仓库根 AGENTS.md 流程 dry-run 后部署；全链路验收含 `/availability`、真实提交与余额显示。
 
 ## 与本地效果的差异声明
