@@ -77,6 +77,25 @@ SURNAMES = set(
 
 # 已知作者姓名库（经用户确认的准确分词），新作者名确认后加入
 KNOWN_AUTHORS = {
+    '乔前东', '乔友刚', '冯明农', '刘亚东', '刘元珺', '刘琪瑞', '博德弥亚·阿福', '卢小玛',
+    '卢欣', '卢雅媚', '史志藏', '叶茜', '吴义容', '周伟', '周佐欢', '唐健',
+    '姜春晓', '孙丽颖', '孙晓阳', '屈思哲', '师静雅', '廖国焱', '开丽', '张一炜',
+    '张俊楠', '张奥光', '张德广', '张振兴', '张斌', '张煦明', '张超', '张雷',
+    '徐实', '徐小云', '战玉沈', '戴竹君', '明素媚', '曲宝宇', '曹阳', '曹雨航',
+    '李佳伦', '李俊芳', '李先红', '李宜爽', '李彦明', '李忠', '李文蜜', '李绍魁',
+    '杨传营', '杨宏伟', '杨小莉', '杨建莹', '杨思瑶', '杨明', '杨茜茜', '林娟娟',
+    '林惠娜', '毛娟', '王同亮', '王天宇', '王恬茹', '王文昊', '王明震', '王梧熠',
+    '王贞', '生宸', '田东晓', '田雨', '白红霞', '秦兴娟', '程春芳', '章霞霞',
+    '聂皓浩', '胡蝶', '范体艳', '莫菊花', '董凌宇', '蒋尧', '袁心雨', '袁李明',
+    '许求星', '谌云鹏', '贲维芬', '赵久丽', '赵勇', '赵鹏', '邓丽', '邹兰军',
+    '邹燚', '郎嘉河', '郑艳玲', '郝燕', '郭建广', '郭昕宇', '阮中军', '陈燕芬',
+    '陈笑娟', '陶听', '陶瑶', '韩大洋', '项慕虹', '高婧', '高阳',
+    '侯小斌', '刘宇', '刘武', '刘菡', '单芸', '卢志民', '吕迪凡', '吴萌',
+    '周建朔', '孙胜阳', '崔文倩', '崔颖', '常志岗', '廖婷婷', '戴洋', '文智',
+    '朱君凤', '李伟光', '李坦', '李煜姗', '李璇', '李翔翔', '杨令', '杨子湃',
+    '杨琪', '汪文涛', '沈雨辰', '潘琳', '王娜', '王海蓉', '王璐璐', '王祎',
+    '白莹莹', '程之琪', '罗孳孳', '胡建林', '胡赛安', '薛陶然', '覃俊元', '许馨月',
+    '谢子璜', '费海红', '赵林', '达勇', '钱昊钟', '雷玄肆', '黄晚华', '黄永平',
     "伍立坤", "刘思嘉", "哈依夏", "宋文超", "张书杰", "张毅嘉",
     "张翠", "张青", "景博", "曹萍萍", "曾倩彬", "曾祥忠",
     "杨凯丽", "汪丽", "王恂", "罗海英", "蔡宽元", "金满慧",
@@ -1266,27 +1285,33 @@ def _add_author_names(target, raw, strict=False):
         target.append(name)
 
 
-def _extract_photo_credit_authors(content_text):
-    """提取图片/图文署名，正确处理“图/文”被换行拆开的版式。"""
-    names = []
+def _extract_photo_credits(content_text):
+    """提取图文署名及其角色、位置，兼容“图/文”被换行拆开的版式。"""
+    credits = []
     name_pattern = r"[\u4e00-\u9fff·]{2,4}?"
     tail = r"(?=(?:[ \t]*(?:文|图|制图)[/:：])|[\r\n。；;]|$)"
     pattern = re.compile(
         rf"图[ \t\r\n]*/[ \t\r\n]*文[ \t\r\n]*[：:]?[ \t\r\n]*(?P<paired>{name_pattern}){tail}"
-        rf"|(?:图|文|制图)[ \t]*[/:：][ \t]*(?P<single>{name_pattern}){tail}",
+        rf"|(?P<role>图|文|制图)[ \t]*[/:：][ \t]*(?P<single>{name_pattern}){tail}",
         re.MULTILINE,
     )
     for match in pattern.finditer(content_text):
         raw = match.group("paired") or match.group("single")
         if raw:
-            # 已有“图/文”等明确角色标记；即使姓氏暂未进入作者库，也不能把角色字“文”并入姓名。
+            names = []
+            # 已有明确角色标记，即使姓氏暂未进入作者库也保留。
             _add_author_names(names, raw, strict=False)
-    return names
+            credits.append({
+                "position": match.start(),
+                "role": "图文" if match.group("paired") else match.group("role"),
+                "names": names,
+            })
+    return credits
 
 
-def _extract_role_credit_authors(content_text, photo_credit_names=None):
-    """提取正文中明确的策划/文/图等角色署名，返回按出现顺序的姓名。"""
-    names = []
+def _extract_role_credits(content_text, photo_credit_names=None):
+    """提取策划/文/图等角色署名，保留角色和正文中的出现位置。"""
+    credits = []
     photo_credit_names = set(photo_credit_names or [])
     for start_match in _AUTHOR_CREDIT_START_RE.finditer(content_text):
         start = start_match.start(1)
@@ -1311,14 +1336,23 @@ def _extract_role_credit_authors(content_text, photo_credit_names=None):
                 )
                 raw = matched_photo_name or role_trimmed
             if raw:
+                names = []
                 _add_author_names(names, raw, strict=raw not in photo_credit_names)
-    return names
+                credits.append({
+                    "position": start + marker.start(),
+                    "role": marker.group(1),
+                    "names": names,
+                })
+    return credits
 
 
 def extract_authors(data, content_text, final_title="", is_pic=False):
-    """统一提取作者：合并 API、正文署名和漫评/图片角色署名。"""
+    """普通报道正文作者优先；图片新闻、漫评按实际角色署名顺序合并。"""
     is_cartoon = "漫评" in str(final_title) or bool(re.search(r"策划创作\s*[/:：]", content_text))
-    photo_credit_names = _extract_photo_credit_authors(content_text) if (is_pic or is_cartoon) else []
+    photo_credits = _extract_photo_credits(content_text)
+    photo_credit_names = []
+    for credit in photo_credits:
+        _add_author_names(photo_credit_names, credit["names"])
     primary = ""
     doc_author = data.get("docAuthor", "") or ""
     if doc_author:
@@ -1349,13 +1383,22 @@ def extract_authors(data, content_text, final_title="", is_pic=False):
         if role_trimmed in KNOWN_AUTHORS or primary not in KNOWN_AUTHORS:
             primary = role_trimmed
 
-    names = []
-    role_names = _extract_role_credit_authors(content_text, photo_credit_names)
-    # 角色署名位于正文末尾，按版面署名顺序优先；再合并 API/正文记者名。
-    _add_author_names(names, role_names)
-    _add_author_names(names, primary)
+    credits = sorted(
+        _extract_role_credits(content_text, photo_credit_names) + photo_credits,
+        key=lambda credit: credit["position"],
+    )
+    role_names, text_role_names, visual_names = [], [], []
+    for credit in credits:
+        _add_author_names(role_names, credit["names"])
+        if credit["role"] in {"文", "文字", "撰文"}:
+            _add_author_names(text_role_names, credit["names"])
+        elif credit["role"] in {"图", "图文", "摄影", "制图", "绘画"}:
+            _add_author_names(visual_names, credit["names"])
+    api_names = []
+    _add_author_names(api_names, primary)
 
-    # 正文开头记者/通讯员署名：即使已有 docAuthor 也合并，避免 API 漏人。
+    # 分别收集正文署名，提取顺序不直接决定最终作者顺序。
+    body_names = []
     lead = ""
     m2 = re.search(
         r"(?:本报讯|本报)\s*(?:记者|通\s*讯\s*员|特约记者|特约通讯员|实习记者)\s*"
@@ -1391,17 +1434,10 @@ def extract_authors(data, content_text, final_title="", is_pic=False):
             and all(seg in KNOWN_AUTHORS or seg[0] in SURNAMES for seg in segments)
         ):
             lead = ""
-    _add_author_names(names, lead)
+    _add_author_names(body_names, lead)
 
-    # 漫评/图片新闻的图文署名可能不在正文首尾括号中；作为角色署名补充扫描。
-    if is_pic or is_cartoon:
-        # 署名角色已由 _extract_photo_credit_authors 确认；未知姓氏也要保留，不让图文角色导致作者丢失。
-        _add_author_names(names, photo_credit_names, strict=False)
-    if (is_cartoon or re.search(r"(?:图|文|制图)[/:：]", content_text)) and not role_names and not names:
-        print("  ⚠ 检测到显式图文/策划署名但未提取到作者，需人工复核", file=sys.stderr)
-
-    # 低优先级回退：尾部整理/编译/括号署名，仅在前述来源均为空时使用。
-    if not names:
+    # 正文未给出开头署名时，检查文末整理/编译/括号署名，避免被图片作者遮蔽。
+    if not body_names:
         fallback = ""
         m = re.search(r"（([^）]+整理)）\s*$", content_text)
         if m:
@@ -1424,12 +1460,32 @@ def extract_authors(data, content_text, final_title="", is_pic=False):
             m = re.search(r"（(?:调研组成员?|作者)[：:]\s*([\u4e00-\u9fff·、]+)）", content_text)
             if m:
                 fallback = " ".join(n.strip() for n in re.split(r"[、，,]", m.group(1)) if n.strip())
-        _add_author_names(names, fallback)
+        _add_author_names(body_names, fallback, strict=True)
 
-    if not names:
-        first_line = content_text.split("\n")[0].strip()
-        if first_line and 2 <= len(first_line) <= 4 and not re.match(r"^(本报讯|本报|新华社|图为|编者)", first_line):
-            _add_author_names(names, first_line)
+    if not body_names:
+        first_line = content_text.lstrip().split("\n")[0].strip()
+        if (
+            first_line and 2 <= len(first_line) <= 4
+            and not re.match(r"^(本报讯|本报|新华社|图为|编者)", first_line)
+            and (first_line in KNOWN_AUTHORS or first_line[0] in SURNAMES)
+        ):
+            _add_author_names(body_names, first_line)
+
+    names = []
+    if is_pic or is_cartoon:
+        # 图文作品保留各角色在原文中的先后，API 和普通署名仅补缺。
+        _add_author_names(names, role_names)
+        _add_author_names(names, body_names)
+        _add_author_names(names, api_names)
+    else:
+        # 普通报道先列文字作者，明确的配图作者延后；API 不覆盖正文署名顺序。
+        _add_author_names(names, body_names)
+        _add_author_names(names, text_role_names)
+        visual_only = set(visual_names) - set(text_role_names)
+        _add_author_names(names, [name for name in api_names if name not in visual_only])
+        _add_author_names(names, role_names)
+    if (is_cartoon or re.search(r"(?:图|文|制图)[/:：]", content_text)) and not role_names and not names:
+        print("  ⚠ 检测到显式图文/策划署名但未提取到作者，需人工复核", file=sys.stderr)
     if not names and re.search(r"^本报评论员", content_text[:30]) and not re.search(r"本报(记者|通\s*讯\s*员)", content_text[:30]):
         return ""
     # 最后一道闸门：图/文角色拆行时，任何“文+真实姓名”别名都不得落入作者字段。
