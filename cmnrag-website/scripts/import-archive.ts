@@ -18,9 +18,7 @@ if (!dateSet.size && !monthSet.size) throw new Error("set CMNRAG_DATES=YYYYMMDD 
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "6af7ecfe8e736f150bae5089463f9293";
 const token = process.env.CLOUDFLARE_RAG_API_TOKEN;
 const databaseId = "f0fbe6ce-5e87-4885-9ab6-7e948ec13c4d";
-const vectorIndex = process.env.VECTORIZE_INDEX ?? "zgqxb-bge-m3";
 const SQL_BATCH_SIZE = 50;
-const VECTOR_BATCH_SIZE = 1000;
 if (!token) throw new Error("CLOUDFLARE_RAG_API_TOKEN is required");
 
 async function discoverMonths(root: string): Promise<string[]> {
@@ -97,34 +95,9 @@ async function loadExistingRows(scopePrefixes: string[]): Promise<ExistingArticl
 	}));
 }
 
-async function deleteVectors(vectorIds: string[]) {
-	for (let offset = 0; offset < vectorIds.length; offset += VECTOR_BATCH_SIZE) {
-		const ids = vectorIds.slice(offset, offset + VECTOR_BATCH_SIZE);
-		const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/vectorize/v2/indexes/${vectorIndex}/delete_by_ids`, {
-			method: "POST",
-			headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-			body: JSON.stringify({ ids }),
-		});
-		if (!response.ok) throw new Error(`Vectorize HTTP ${response.status}: ${await response.text()}`);
-		const data = await response.json() as { success: boolean; errors?: unknown[] };
-		if (!data.success) throw new Error(`Vectorize failed: ${JSON.stringify(data.errors)}`);
-	}
-}
-
-async function reconcileStaleArticles(rows: ExistingArticle[]): Promise<number> {
+async function deleteStaleArticles(rows: ExistingArticle[]): Promise<number> {
 	if (!rows.length) return 0;
 	const articleIds = rows.map((row) => row.articleId);
-	const vectorIds = new Set<string>();
-	for (let offset = 0; offset < articleIds.length; offset += SQL_BATCH_SIZE) {
-		const ids = articleIds.slice(offset, offset + SQL_BATCH_SIZE);
-		const placeholders = ids.map(() => "?").join(",");
-		const chunks = await query(`SELECT vector_id FROM chunks WHERE article_id IN (${placeholders})`, ids);
-		for (const chunk of chunks) {
-			if (typeof chunk.vector_id === "string" && chunk.vector_id) vectorIds.add(chunk.vector_id);
-		}
-	}
-	// 先删 Vectorize，再删 D1；否则 articles 的 ON DELETE CASCADE 会丢掉清理向量所需的 vector_id。
-	await deleteVectors([...vectorIds]);
 	for (let offset = 0; offset < articleIds.length; offset += SQL_BATCH_SIZE) {
 		const ids = articleIds.slice(offset, offset + SQL_BATCH_SIZE);
 		const placeholders = ids.map(() => "?").join(",");
@@ -173,7 +146,7 @@ async function main() {
 	const runId = randomUUID();
 	const runSource = `${sourceRoot} [${scopeLabel}]`;
 	await execute("INSERT INTO ingest_runs(run_id, started_at, source_root, article_total) VALUES (?, datetime('now'), ?, ?)", [runId, runSource, articles.length]);
-	const deleted = await reconcileStaleArticles(staleRows);
+	const deleted = await deleteStaleArticles(staleRows);
 	let inserted = 0;
 	let changed = 0;
 	let skipped = 0;
@@ -186,7 +159,7 @@ async function main() {
 		await execute(`INSERT INTO articles(article_id, source_path, source_sha256, type, source, title, subtitle, author, published_date, page, theme, edition_type, headline, image, column_name, region, content)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(source_path) DO UPDATE SET source_sha256=excluded.source_sha256, type=excluded.type, source=excluded.source, title=excluded.title, subtitle=excluded.subtitle, author=excluded.author, published_date=excluded.published_date, page=excluded.page, theme=excluded.theme, edition_type=excluded.edition_type, headline=excluded.headline, image=excluded.image, column_name=excluded.column_name, region=excluded.region, content=excluded.content, imported_at=CURRENT_TIMESTAMP
-		WHERE articles.source_sha256 <> excluded.source_sha256`, [article.articleId, article.sourcePath, article.sourceSha256, article.type, article.source, article.title, article.subtitle, JSON.stringify(article.author), article.date, article.page, article.theme, article.editionType, article.headline ? 1 : 0, article.image ? 1 : 0, JSON.stringify(article.columnName), JSON.stringify(article.region), article.content]);
+		WHERE articles.source_sha256 <> excluded.source_sha256`, [article.articleId, article.sourcePath, article.sourceSha256, article.type, article.source, article.title, "", JSON.stringify(article.author), article.date, article.page, article.theme, article.editionType, article.headline ? 1 : 0, article.image ? 1 : 0, JSON.stringify(article.columnName), JSON.stringify(article.region), article.content]);
 		inserted++;
 		if (remoteSha !== undefined) changed++;
 	}

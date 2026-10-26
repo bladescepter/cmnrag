@@ -1,7 +1,7 @@
 ---
 type: 报道
 source: 中国气象报
-title: 从手工翻拍到RTE系统推广
+title: "从手工翻拍到RTE系统推广"
 author:
   - 古德
 date: 2026-06-02

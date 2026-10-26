@@ -1,7 +1,7 @@
 ---
 type: 报道
 source: 中国气象报
-title: NOAA扩大商业卫星数据应用范围
+title: "NOAA扩大商业卫星数据应用范围"
 author:
   - 黄琬婷
 date: 2026-09-24

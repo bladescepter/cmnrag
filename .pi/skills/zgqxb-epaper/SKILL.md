@@ -124,7 +124,7 @@ tags: [epaper, 中国气象报, newspaper, rag-pipeline]
 
 - `getBmDetail` 每条：`DOCTITLE`（标题）、`DOCAUTHOR`（作者）、`ZB_GUID`（文章ID）、`BM`（版面名）、`ZB`（坐标）
 - `detailData`：`docTitle`、`docAuthor`、`yt`（引题）、`fb`（副题）、`txs`（字数）、`content`（正文HTML）、`ctpath`（配图）、`ts`（图片说明）
-- **标题以 `detailData.docTitle` 为准**（`DOCTITLE` 可能不一致）；写入 frontmatter 和文件名之前统一清理 HTML 实体，字面字符串 `&nbsp;` 必须去掉/转为普通空格，禁止进入标题
+- **主标题以 `detailData.docTitle` 为准**（`DOCTITLE` 可能不一致）；按 `yt`（引题）→ `docTitle`（主标题）→ `fb`（副题）的原文顺序合为完整 `title`，片段间用空格，保留标点和破折号，不另写 `subtitle` 字段；已包含的片段不重复追加。图片新闻仍走现有短标题流程。写入 frontmatter 和文件名之前统一清理 HTML 实体，字面字符串 `&nbsp;` 必须去掉/转为普通空格，禁止进入标题。
 - `column` 是纯视觉元素（版面标签条），**API 不提供**（`CS` 字段大多为空）；版面名（要闻/综合/党建…）不是栏目名，引题不是栏目名
 - `region` 由当前 LLM 按全文报道主体判定，字段语义以 `cmnrag/FRONTMATTER.md` 为准。先确定主体，再判断填写一项、多项还是留空；跨省本身不构成留空条件。
   - 聚焦一个地方事项、机构或项目：填写主体所在地的完整行政路径（省级开头，精确到正文明确的层级）。机构跨地共建，不自动把所有共建地区列为主体。

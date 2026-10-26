@@ -1,7 +1,7 @@
 ---
 type: 报道
 source: 中国气象报
-title: 新一代“妈祖（MAZU）”早期预警云端公共版发布
+title: "新一代“妈祖（MAZU）”早期预警云端公共版发布"
 author:
   - 徐嫩羽
   - 唐健

@@ -1526,6 +1526,27 @@ def html_clean(s):
     s = s.replace("&nbsp;", " ").replace("\xa0", " ")
     return re.sub(r"<[^>]+>", "", s).strip()
 
+def complete_title(title, kicker="", subtitle=""):
+    """按引题、主标题、副题顺序保留完整标题；清理实体，不改写原文。"""
+    def clean(value):
+        text = html_clean(str(value or ""))
+        return "" if text.lower() in ("null", "none") else " ".join(text.split())
+
+    full = clean(title)
+    kicker = clean(kicker)
+    subtitle = clean(subtitle)
+    if kicker and kicker not in full:
+        full = f"{kicker} {full}".strip()
+    if subtitle and subtitle not in full:
+        full = f"{full} {subtitle}".strip()
+    return full
+
+
+def title_field(title):
+    # JSON 引号也是合法 YAML，避免冒号、井号等标题原文改变字段结构。
+    return f"title: {json.dumps(title, ensure_ascii=False)}"
+
+
 def sanitize_filename(s):
     # 文件名与标题同样禁止残留 HTML 实体（尤其是 &nbsp;）。
     s = html_clean(str(s))
@@ -1560,7 +1581,7 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
     content_text = re.sub(r"<[^>]+>", "", content_text)
     content_text = re.sub(r"\n{3,}", "\n\n", content_text).strip()
     title = html_clean(str(data.get("docTitle") or ""))
-    final_title = title.split("——")[0].strip() if "——" in title else title
+    final_title = title
     is_pic = (final_title == "图片新闻") or (len(content_text.split("\n")) < 3 and len(content_text) < 80)
     # 无标题（docTitle 为 null/"null"/空，多为图片新闻）：从正文首行/CS 提取，兑底"图片新闻"
     if not final_title or final_title.lower() == "null":
@@ -1576,6 +1597,8 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
     if is_pic:
         # 统一「图片新闻：XXXX」占位；概括短语由当前 LLM 经 --apply-titles 补写。
         final_title = pic_placeholder_title(final_title)
+    else:
+        final_title = complete_title(final_title, data.get("yt"), subtitle or data.get("fb"))
 
     # 作者处理：普通抓取与单篇重抓共用，显式角色署名会与 API/正文署名合并。
     author = extract_authors(data, content_text, final_title, is_pic)
@@ -1586,12 +1609,11 @@ def process_article(data, page_name, order, date_str, out_dir, theme, subtitle="
     region = existing_region or region
     
     fm = ["---", "type: 报道", "source: 中国气象报",
-          f"title: {final_title}", fm_list("author", author),
+          title_field(final_title), fm_list("author", author),
           f"date: {date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}", f"page: {page_name}",
           f"theme: {theme}", f"edition_type: {ed_type}",
           f"headline: {'true' if order==1 else 'false'}"]
     if is_pic: fm.append("image: true")
-    if subtitle: fm.append(f"subtitle: {subtitle}")
     if existing_col: fm.append(fm_list("column", existing_col))
     else: fm.append("column: ")
     fm.append(fm_list("region", region, splitter=r"[,，;；]"))
@@ -1811,7 +1833,6 @@ def main(date_str):
             order = idx + 1
             # 标题统一清理 HTML 实体（包括 &nbsp;），避免实体进入 frontmatter/文件名。
             title = html_clean(str(data.get("docTitle") or "")) or html_clean(str(a.get("title_api") or ""))
-            subtitle = data.get("fb", "")
             content_raw = data.get("content", "")
             content_text = clean_html(content_raw)
 
@@ -1848,7 +1869,7 @@ def main(date_str):
                 # 统一「图片新闻：XXXX」占位；概括短语由当前 LLM 经 --apply-titles 补写。
                 final_title = pic_placeholder_title(pic_title)
             else:
-                final_title = title
+                final_title = complete_title(title, data.get("yt"), data.get("fb"))
 
             # 要闻简报拆分：正文含多条"本报讯"的合并简报按条拆分
             if "要闻简报" in final_title and content_text.count("本报讯") > 1:
@@ -1890,7 +1911,7 @@ def main(date_str):
                             
                             item_fm = [
                                 "---", "type: 报道", "source: 中国气象报",
-                                f"title: {item_title}", fm_list("author", item_author),
+                                title_field(item_title), fm_list("author", item_author),
                                 f"date: {date_dash}", f"page: {page}",
                                 f"theme: {theme}", f"edition_type: {ed_type}",
                                 "headline: false", fm_list("column", "要闻简报"),
@@ -1917,7 +1938,7 @@ def main(date_str):
                 "---",
                 "type: 报道",
                 "source: 中国气象报",
-                f"title: {final_title}",
+                title_field(final_title),
                 fm_list("author", author),
                 f"date: {date_dash}",
                 f"page: {page}",
@@ -1957,8 +1978,6 @@ def main(date_str):
                                 region = _old_r
                             break
             fm.append(fm_list("region", region, splitter=r"[,，;；]"))
-            if subtitle:
-                fm.append(f"subtitle: {subtitle}")
             fm.append("---")
 
             md = "\n".join(fm) + "\n\n" + content_text + "\n"
@@ -1984,13 +2003,188 @@ def main(date_str):
     print("后续: 当前 LLM 概括图片新闻标题 → enrich_regions（地区）→ col_vision_run（栏目）")
 
 
+def prepare_archive_titles(scope):
+    """为既有档案生成可续跑的标题清单；仅取标题字段，不重抓、覆盖稿件。"""
+    from pathlib import Path
+    import hashlib
+    import yaml
+
+    if not re.fullmatch(r"\d{6}(?:\d{2})?", scope):
+        raise ValueError("标题核对范围必须为 YYYYMM 或 YYYYMMDD")
+    base = Path(OUT_BASE) / scope[:6]
+    dates = ([base / scope] if len(scope) == 8 else
+             sorted(p for p in base.iterdir() if p.is_dir() and re.fullmatch(r"\d{8}", p.name)))
+    work = Path(OUT_BASE) / "column_test"
+    cache = work / "archive_title_api"
+    cache.mkdir(parents=True, exist_ok=True)
+    manifest_path = work / f"{scope}_archive_titles.json"
+    manifest = {"scope": scope, "articles": [], "pages": {}}
+
+    def norm(value):
+        return re.sub(r"\s+", "", html_clean(str(value or "")))
+
+    for directory in dates:
+        for page_dir in sorted(p for p in directory.iterdir() if p.is_dir()):
+            bc = {"一版": "01", "二版": "02", "三版": "03", "四版": "04"}[page_dir.name]
+            key = f"{directory.name}_{bc}"
+            result_path = work / f"{key}_result.json"
+            rows = json.loads(result_path.read_text(encoding="utf-8"))
+            details = {}
+            for row in rows:
+                guid = str(row["guid"])
+                cached = cache / f"{guid}.json"
+                if cached.exists():
+                    details[guid] = json.loads(cached.read_text(encoding="utf-8"))
+                    continue
+                data = None
+                for attempt in range(3):
+                    candidate = curl_post(f"{API_BASE}/detailData.do", f"guid={guid}")
+                    if isinstance(candidate, dict) and "docTitle" in candidate:
+                        data = {field: candidate.get(field) for field in ("docTitle", "yt", "fb")}
+                        break
+                    time.sleep(1 + attempt)
+                if data is None:
+                    raise RuntimeError(f"标题接口失败：{key} GUID={guid}")
+                cached.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                details[guid] = data
+                time.sleep(0.3)
+
+            for path in sorted(page_dir.glob("*.md")):
+                raw = path.read_bytes()
+                text = raw.decode("utf-8")
+                match = re.match(r"^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)", text)
+                if not match:
+                    raise ValueError(f"缺少 frontmatter: {path}")
+                fm = yaml.safe_load(match.group(1))
+                old = str(fm.get("title") or "")
+                sub = str(fm.get("subtitle") or "")
+                candidates = [row for row in rows if norm(row["title"]) == norm(old)]
+                kind = "article"
+                if len(candidates) != 1 and fm.get("image"):
+                    order = int(re.match(r"\d+", path.name).group())
+                    candidates = ([rows[order - 1]] if order <= len(rows) and
+                                  norm(rows[order - 1]["title"]) in ("", "图片新闻", "null", "None") else [])
+                    kind = "picture"
+                if len(candidates) != 1 and re.match(r"\d+-\d+-", path.name):
+                    order = int(re.match(r"\d+", path.name).group())
+                    candidates = ([rows[order - 1]] if order <= len(rows) and
+                                  "要闻简报" in rows[order - 1]["title"] else [])
+                    kind = "brief"
+                row = candidates[0] if len(candidates) == 1 else None
+                fields = details[str(row["guid"])] if row else {}
+                title = complete_title(old, subtitle=sub)
+                if row and kind == "article":
+                    title = complete_title(fields.get("docTitle") or old, fields.get("yt"), fields.get("fb") or sub)
+                manifest["articles"].append({
+                    "file": str(path.relative_to(Path(OUT_BASE))), "page_key": key,
+                    "source_sha256": hashlib.sha256(raw).hexdigest(),
+                    "old_title": old, "old_subtitle": sub, "image": bool(fm.get("image")),
+                    "guid": str(row["guid"]) if row else "", "kind": kind,
+                    "api": fields, "title": title, "matched": bool(row),
+                })
+            manifest["pages"][key] = {"reviewed": False, "image": ""}
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"标题候选 {key}: 累计 {len(manifest['articles'])} 篇", flush=True)
+    unresolved = [row["file"] for row in manifest["articles"] if not row["matched"]]
+    print(json.dumps({"manifest": str(manifest_path), "articles": len(manifest["articles"]),
+                      "pages": len(manifest["pages"]), "unmatched": unresolved}, ensure_ascii=False), flush=True)
+
+
+def apply_archive_titles(scope, dry_run=False):
+    """只改标题、副题字段及文件名；整批预检后写入，并输出逐篇差异报告。"""
+    from pathlib import Path
+    import hashlib
+    import yaml
+
+    root = Path(OUT_BASE)
+    if not re.fullmatch(r"\d{6}(?:\d{2})?", scope):
+        raise ValueError("标题核对范围必须为 YYYYMM 或 YYYYMMDD")
+    manifest_path = root / "column_test" / f"{scope}_archive_titles.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    base = root / scope[:6] / scope if len(scope) == 8 else root / scope
+    local_files = {str(path.relative_to(root)) for path in base.rglob("*.md")}
+    listed_files = [item["file"] for item in manifest["articles"]]
+    if set(listed_files) != local_files or len(listed_files) != len(local_files):
+        raise ValueError("标题清单未完整覆盖指定范围或存在重复稿件")
+    if manifest.get("scope") != scope:
+        raise ValueError("标题清单范围不匹配")
+    pending = [key for key, page in manifest["pages"].items() if not page.get("reviewed")]
+    if pending:
+        raise ValueError("尚未逐版核对：" + ",".join(pending))
+    plans = []
+    targets = set()
+    for item in manifest["articles"]:
+        if not item.get("matched"):
+            raise ValueError(f"尚未确认稿件对应关系: {item['file']}")
+        src = root / item["file"]
+        raw = src.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != item["source_sha256"]:
+            raise ValueError(f"稿件在核对后发生变更: {src}")
+        title = str(item["title"]).strip()
+        if not title or "\n" in title or "\r" in title:
+            raise ValueError(f"完整标题无效: {src}")
+        text = raw.decode("utf-8")
+        match = re.match(r"^(---\r?\n)([\s\S]*?)(\r?\n---(?:\r?\n|$))([\s\S]*)$", text)
+        if not match:
+            raise ValueError(f"frontmatter 无效: {src}")
+        before = yaml.safe_load(match[2])
+        lines = match[2].splitlines(keepends=True)
+        starts = [i for i, line in enumerate(lines) if re.match(r"^(title|subtitle):", line)]
+        newline = "\r\n" if "\r\n" in text else "\n"
+        for start in reversed(starts):
+            end = start + 1
+            while end < len(lines) and (lines[end].startswith((" ", "\t")) or not lines[end].strip()):
+                end += 1
+            last = end == len(lines) and not lines[-1].endswith(("\n", "\r"))
+            replacement = [] if lines[start].startswith("subtitle:") else [title_field(title) + ("" if last else newline)]
+            lines[start:end] = replacement
+        new_fm = "".join(lines).rstrip("\r\n")
+        after = yaml.safe_load(new_fm)
+        old_metadata = {key: value for key, value in before.items() if key not in ("title", "subtitle")}
+        new_metadata = {key: value for key, value in after.items() if key != "title"}
+        if old_metadata != new_metadata or after.get("title") != title or "subtitle" in after:
+            raise ValueError(f"标题之外字段发生变化: {src}")
+        updated = (match[1] + new_fm + match[3] + match[4]).encode("utf-8")
+        prefix = re.match(r"\d+(?:-\d+)?-", src.name).group()
+        dst = src.with_name(prefix + sanitize_filename(title) + ".md")
+        if len(dst.name.encode("utf-8")) > 255:
+            raise ValueError(f"文件名超出系统长度限制: {dst}")
+        if dst in targets or (dst.exists() and dst != src):
+            raise ValueError(f"目标文件名冲突: {dst}")
+        targets.add(dst)
+        plans.append((src, dst, raw, updated, item))
+    changed = [plan for plan in plans if plan[2] != plan[3] or plan[0] != plan[1]]
+    report = [f"# {scope} 标题补全变更清单", "", f"核对 {len(plans)} 篇、{len(manifest['pages'])} 个版面；变更 {len(changed)} 篇。", "",
+              "仅修改 title、移除 subtitle 并同步文件名；正文及其他字段逐篇校验保持一致。", "",
+              "| 原路径 | 新路径 | 原标题 | 原副题 | 完整标题 |", "|---|---|---|---|---|"]
+    def cell(value):
+        return str(value).replace("|", "\\|").replace("\n", " ")
+    for src, dst, raw, updated, item in changed:
+        report.append("| " + " | ".join(cell(value) for value in
+                      (src.relative_to(root), dst.relative_to(root), item["old_title"], item["old_subtitle"], item["title"])) + " |")
+    report_path = Path(PROJECT_ROOT) / f"{scope}-title-changes.md"
+    report_path.write_text("\n".join(report) + "\n", encoding="utf-8")
+    if not dry_run:
+        for src, dst, raw, updated, item in changed:
+            src.write_bytes(updated)
+            if dst != src:
+                src.rename(dst)
+    print(json.dumps({"dry_run": dry_run, "articles": len(plans), "changed": len(changed),
+                      "renamed": sum(src != dst for src, dst, *_ in changed),
+                      "report": str(report_path)}, ensure_ascii=False))
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("用法: python3 fetch_epaper.py YYYYMMDD")
         print("      python3 fetch_epaper.py --guid=XXXXX YYYYMMDD        # 单篇重抓")
         print("      python3 fetch_epaper.py --apply-titles YYYYMMDD     # 回写当前 LLM 概括的图片新闻标题")
         sys.exit(1)
-    if sys.argv[1].startswith("--guid="):
+    if sys.argv[1] == "--prepare-archive-titles":
+        prepare_archive_titles(sys.argv[2])
+    elif sys.argv[1] in ("--apply-archive-titles", "--check-archive-titles"):
+        apply_archive_titles(sys.argv[2], dry_run=sys.argv[1] == "--check-archive-titles")
+    elif sys.argv[1].startswith("--guid="):
         guid = sys.argv[1].split("=", 1)[1]
         date_str = sys.argv[2]
         fetch_single(guid, date_str)

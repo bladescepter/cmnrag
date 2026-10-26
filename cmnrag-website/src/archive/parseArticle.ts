@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { parse } from "yaml";
+import { completeTitle } from "./title";
 
 export type Article = {
 	articleId: string;
@@ -7,7 +8,6 @@ export type Article = {
 	type: string;
 	source: string;
 	title: string;
-	subtitle: string;
 	author: string[];
 	date: string;
 	page: string;
@@ -86,8 +86,7 @@ export function parseArticle(markdown: string, sourcePath: string): Article {
 		sourcePath,
 		type: textValue(frontmatter, "type", true),
 		source: textValue(frontmatter, "source", true),
-		title: textValue(frontmatter, "title", true),
-		subtitle: textValue(frontmatter, "subtitle"),
+		title: completeTitle(textValue(frontmatter, "title", true), textValue(frontmatter, "subtitle")),
 		author: listTextValue(frontmatter, "author"),
 		date,
 		page,

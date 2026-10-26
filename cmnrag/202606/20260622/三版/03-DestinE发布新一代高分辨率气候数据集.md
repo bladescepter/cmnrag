@@ -1,7 +1,7 @@
 ---
 type: 报道
 source: 中国气象报
-title: DestinE发布新一代高分辨率气候数据集
+title: "DestinE发布新一代高分辨率气候数据集"
 author:
   - 何静怡
 date: 2026-06-22

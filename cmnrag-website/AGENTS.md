@@ -18,7 +18,7 @@
 - 名称：`china-meteo-rag`
 - 入口：`src/index.ts`
 - 域名：`https://cfzx.xiyuan.wiki`
-- 绑定：`DB`（`zgqxb-archive`）、`PB_DB`（`paiban`）、`VECTORIZE`（`zgqxb-bge-m3`）、`AI`、`ASSETS`
+- 绑定：`DB`（D1 `zgqxb-archive`）、`PB_DB`（D1 `paiban`）、`ASSETS`（静态文件）
 - 修改 `wrangler.jsonc` 的绑定后必须执行 `npx wrangler types`。
 
 ## 部署命令
@@ -32,7 +32,7 @@ npx wrangler deploy --dry-run
 npx wrangler deploy
 ```
 
-新期档案上线前，必须先按根目录流程完成 D1 导入和 Vectorize 向量导入。数据导入失败时停止，不得只报告 Worker 部署成功。
+新期档案上线前，按根目录流程将目标日期的稿件导入 D1。向量导入已停用，禁止调用 `scripts/ingest-vectors.ts`。
 
 新期档案或仅作者/栏目库更新不默认执行 `npm test`、`npm install` 或其他无关检查；只有用户要求或修改了需要验证的 Worker 源码时才执行。
 
@@ -49,9 +49,7 @@ npm run build:paiban
 
 ## Cloudflare 文档
 
-涉及 Workers、D1、Vectorize、Workers AI、资产或限额的变更，先查官方文档：
+涉及 Workers、D1、资产或运行时行为的变更，先查官方文档：
 
 - <https://developers.cloudflare.com/workers/>
 - <https://developers.cloudflare.com/d1/>
-- <https://developers.cloudflare.com/vectorize/>
-- <https://developers.cloudflare.com/workers-ai/>

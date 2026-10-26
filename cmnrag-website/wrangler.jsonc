@@ -22,15 +22,6 @@
 			"database_id": "6ef9cb7b-d2fa-4c20-a5bf-29ae4711748e"
 		}
 	],
-	"vectorize": [
-		{
-			"binding": "VECTORIZE",
-			"index_name": "zgqxb-bge-m3"
-		}
-	],
-	"ai": {
-		"binding": "AI"
-	},
 	"assets": {
 		"directory": "./public",
 		"binding": "ASSETS",

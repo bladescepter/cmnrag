@@ -1,7 +1,7 @@
 ---
 type: 报道
 source: 中国气象报
-title: ECMWF将发布第六代海洋再分析系统
+title: "ECMWF将发布第六代海洋再分析系统"
 author:
   - 刘淑乔
 date: 2026-06-10

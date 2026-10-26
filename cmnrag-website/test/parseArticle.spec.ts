@@ -29,6 +29,17 @@ describe("parseArticle", () => {
 		expect(article.content).toBe("第一段正文。\n\n第二段正文。");
 	});
 
+	it("merges a legacy subtitle into the title without exposing a subtitle field", () => {
+		const article = parseArticle(source.replace("title: 测试稿件", "title: 测试稿件\nsubtitle: ——副题原文"), "legacy.md");
+		expect(article.title).toBe("测试稿件 ——副题原文");
+		expect(article).not.toHaveProperty("subtitle");
+	});
+
+	it("does not repeat a subtitle already present in the full title", () => {
+		const article = parseArticle(source.replace("title: 测试稿件", "title: 测试稿件——副题原文\nsubtitle: ——副题原文"), "legacy.md");
+		expect(article.title).toBe("测试稿件——副题原文");
+	});
+
 	it("parses legacy string fields as single-element lists", () => {
 		const article = parseArticle(source, "20260729/二版/01-测试稿件.md");
 		expect(article.author).toEqual(["张三 李四"]);

@@ -1,7 +1,7 @@
 ---
 type: 报道
 source: 中国气象报
-title: ECMWF发布新型厄尔尼诺指数
+title: "ECMWF发布新型厄尔尼诺指数"
 author:
   - 何静怡
   - 王玉生

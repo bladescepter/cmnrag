@@ -6,6 +6,9 @@ import { buildEmbeddingText, discoverDateFiles, discoverMonthFiles } from "../sr
 import { vectorIdForChunk } from "../src/ingest/vectorId";
 import { parseArticle } from "../src/archive/parseArticle";
 
+// Retired entry point: fail closed so old automation cannot rebuild vectors.
+throw new Error("Vector ingestion is disabled; archive data updates now import to D1 only.");
+
 // 默认指向仓库内数据根目录（<项目根>/cmnrag），可用第一个参数覆盖；
 // 以脚本位置为锚，不依赖运行时 cwd。
 const sourceRoot = process.argv[2] ?? join(__dirname, "..", "..", "cmnrag");
@@ -117,7 +120,7 @@ async function upsertVectors(rows: ChunkRow[], vectors: number[][]) {
 async function upsertArticle(article: ArticleRow) {
 	await execute(`INSERT INTO articles(article_id, source_path, source_sha256, type, source, title, subtitle, author, published_date, page, theme, edition_type, headline, image, column_name, region, content)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(source_path) DO UPDATE SET article_id=excluded.article_id, source_sha256=excluded.source_sha256, type=excluded.type, source=excluded.source, title=excluded.title, subtitle=excluded.subtitle, author=excluded.author, published_date=excluded.published_date, page=excluded.page, theme=excluded.theme, edition_type=excluded.edition_type, headline=excluded.headline, image=excluded.image, column_name=excluded.column_name, region=excluded.region, content=excluded.content, imported_at=CURRENT_TIMESTAMP`, [article.articleId, article.sourcePath, article.sourceSha256, article.type, article.source, article.title, article.subtitle, JSON.stringify(article.author), article.date, article.page, article.theme, article.editionType, article.headline ? 1 : 0, article.image ? 1 : 0, JSON.stringify(article.columnName), JSON.stringify(article.region), article.content]);
+ON CONFLICT(source_path) DO UPDATE SET article_id=excluded.article_id, source_sha256=excluded.source_sha256, type=excluded.type, source=excluded.source, title=excluded.title, subtitle=excluded.subtitle, author=excluded.author, published_date=excluded.published_date, page=excluded.page, theme=excluded.theme, edition_type=excluded.edition_type, headline=excluded.headline, image=excluded.image, column_name=excluded.column_name, region=excluded.region, content=excluded.content, imported_at=CURRENT_TIMESTAMP`, [article.articleId, article.sourcePath, article.sourceSha256, article.type, article.source, article.title, "", JSON.stringify(article.author), article.date, article.page, article.theme, article.editionType, article.headline ? 1 : 0, article.image ? 1 : 0, JSON.stringify(article.columnName), JSON.stringify(article.region), article.content]);
 }
 
 async function main() {

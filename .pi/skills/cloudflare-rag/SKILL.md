@@ -170,7 +170,7 @@ Each chunk stores:
 5. Ingest data: parse → upsert articles → chunk → embed → upsert vectors
 6. Configure custom domain via Cloudflare DNS
 
-## cmnrag 资料上线快路径（D1 + Vectorize + Worker）
+## cmnrag 资料上线快路径（D1 + Worker）
 
 适用于 `cmnrag/` 新增或修订资料，以及审核后作者/栏目白名单的发布。**只有用户明确确认“上线/部署”后，才执行实际 deploy。**
 
@@ -200,18 +200,17 @@ cd cmnrag-website
 2. 已确认的字段不再重复跑抓取、OCR 或视觉识别；用户明确修正只改对应 Markdown（及待办清单），不擅自改其他字段。
 3. 用 `git diff --check` 做低成本格式检查，然后继续远程导入。
 
-### 3. 远程导入和向量更新
+### 3. 远程 D1 档案导入
 
 从 `cmnrag-website/` 执行，**限定本次日期**，不要扫描整月或全库：
 
 ```bash
-CMNRAG_DATES=YYYYMMDD npx tsx scripts/import-archive.ts && \
-CMNRAG_DATES=YYYYMMDD npx tsx scripts/ingest-vectors.ts
+CMNRAG_DATES=YYYYMMDD npx tsx scripts/import-archive.ts
 ```
 
-`CMNRAG_MONTHS=YYYYMM` 仅用于明确要求的整月批处理；未提供日期或月份范围时脚本直接拒绝运行。
+`CMNRAG_MONTHS=YYYYMM` 仅用于明确要求的整月批处理；导入脚本要求显式提供 `CMNRAG_DATES` 或 `CMNRAG_MONTHS`。向量生成与上传已停用，禁止调用 `scripts/ingest-vectors.ts`。
 
-先确认导入脚本输出 JSON（`articles`/`changed`/`skipped`，无 error），再确认向量脚本完成（`chunks` 和最终 JSON）。第一步失败时不得运行第二步。两者都成功后，D1 元数据与 Vectorize 数据已经在线生效。
+先确认导入脚本成功 JSON（`articles`/`changed`/`skipped`，无 error）；D1 导入成功后档案数据即已上线。
 
 纯资料/frontmatter/白名单更新不需要为此强制跑整套 `npm test`；只有 Worker 源码、前端资源或配置发生变化时才跑测试。修改 `wrangler.jsonc` 绑定时先运行 `npx wrangler types`；排班前端变更时先运行 `npm run build:paiban`。
 
@@ -239,11 +238,11 @@ npx wrangler deploy
 curl -fsS https://cfzx.xiyuan.wiki/health
 ```
 
-导入脚本的成功 JSON 是 D1/Vectorize 写入结果，Worker deploy 的 version ID 加 `/health` 的 `{"status":"ok"}` 是发布验收依据。确需手工查 D1 时，必须使用非空的 `CLOUDFLARE_ACCOUNT_ID` 和完整路径 `.../client/v4/accounts/<account_id>/d1/database/<database_id>/query`，不得让空变量拼出 `/accounts/d1/...`。
+D1 导入脚本的成功 JSON 是档案数据写入结果；Worker deploy 的 version ID 加 `/health` 的 `{"status":"ok"}` 是发布验收依据。确需手工查 D1 时，必须使用非空的 `CLOUDFLARE_ACCOUNT_ID` 和完整路径 `.../client/v4/accounts/<account_id>/d1/database/<database_id>/query`，不得让空变量拼出 `/accounts/d1/...`。
 
 ### 6. 完成条件
 
-一次上线只需保留：审核后的本地数据、导入 JSON、向量完成 JSON、dry-run 结果（如适用）、deploy version ID（如适用）和 health 响应。不要在成功后追加无必要的全库测试、重复导入、重复部署或额外查询。
+一次上线只需保留：审核后的本地数据、D1 导入 JSON、dry-run 结果（如适用）、deploy version ID（如适用）和 health 响应。不要在成功后追加无必要的全库测试、重复导入、重复部署或额外查询。
 
 ## Common Errors
 

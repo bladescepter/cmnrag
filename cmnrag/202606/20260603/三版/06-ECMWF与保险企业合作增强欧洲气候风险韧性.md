@@ -1,7 +1,7 @@
 ---
 type: 报道
 source: 中国气象报
-title: ECMWF与保险企业合作增强欧洲气候风险韧性
+title: "ECMWF与保险企业合作增强欧洲气候风险韧性"
 author: 
 date: 2026-06-03
 page: 三版

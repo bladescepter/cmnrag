@@ -14,7 +14,7 @@
 
 - 密钥文件固定在仓库根目录：`/home/blade/Projects/cmnrag/.env`；不是 `cmnrag-website/.env`。
 - `.env` 永不提交、永不打印、永不写入日志。
-- D1/Vectorize 导入脚本使用 `.env` 中的 `CLOUDFLARE_RAG_API_TOKEN`（需具备 Workers、D1、Vectorize 权限）。
+- D1 档案导入脚本使用 `.env` 中的 `CLOUDFLARE_RAG_API_TOKEN`（需具备 D1 权限）。
 - 非交互式 Wrangler 部署需要环境变量 `CLOUDFLARE_API_TOKEN`。部署时从 Workers 权限的 RAG token 临时赋值：
   ```bash
   set -a; . ../.env; set +a
@@ -62,19 +62,18 @@ python scripts/column_detect.py YYYYMMDD --check
 - 直接读取本期本地 Markdown 的 `author`、`column` 字段；
 - 分别与 `scripts/fetch_epaper.py` 的 `KNOWN_AUTHORS`、`scripts/column_detect.py` 的 `KNOWN_COLS` 取差集；
 - 逐人列出新增作者，再写入作者库；确认的新栏目写入栏目库；
-- 不重新回查正文、署名或版面图；不把“入库”解释为 D1/Vectorize 导入。
+- 不重新回查正文、署名或版面图；不把“入库”解释为档案数据上传。
 
 ### 4.3 档案数据上线
 
-只要 `cmnrag/` 新增或修改了稿件，必须在 `cmnrag-website/` 中加载根目录 `.env`，按目标日期精确增量执行，先 D1 后向量：
+只要 `cmnrag/` 新增或修改了稿件，必须在 `cmnrag-website/` 中加载根目录 `.env`，按目标日期精确增量导入 D1：
 
 ```bash
 set -a; . ../.env; set +a
 CMNRAG_DATES=YYYYMMDD npx tsx scripts/import-archive.ts
-CMNRAG_DATES=YYYYMMDD npx tsx scripts/ingest-vectors.ts
 ```
 
-`CMNRAG_MONTHS=YYYYMM` 仅用于明确要求的整月批处理；两个导入脚本均要求显式提供 `CMNRAG_DATES` 或 `CMNRAG_MONTHS`，禁止无范围扫描。两步均成功后，档案数据才算上线；任一步失败必须停止并报告，不得只部署 Worker 代码。
+`CMNRAG_MONTHS=YYYYMM` 仅用于明确要求的整月批处理；导入脚本要求显式提供 `CMNRAG_DATES` 或 `CMNRAG_MONTHS`，禁止无范围扫描。导入成功后，档案数据已写入线上 D1；不执行向量生成或上传。
 
 ### 4.4 Worker 部署
 
@@ -92,14 +91,14 @@ npx wrangler deploy
 ### 4.5 上线核对
 
 - 核对线上 D1 中目标日期篇数与本地稿件数一致；
-- 确认向量导入成功；
+- 确认 D1 导入成功；
 - 确认 `/health` 正常；
 - 发现线上与本地差异先汇报，不擅自修复。
 
 ## 5. Worker 信息
 
 - Worker 名：`china-meteo-rag`；入口：`cmnrag-website/src/index.ts`。
-- 绑定：D1 `DB`（`zgqxb-archive`）、D1 `PB_DB`（`paiban`）、Vectorize `VECTORIZE`（`zgqxb-bge-m3`）、Workers AI `AI`、静态资源 `ASSETS`。
+- 绑定：D1 `DB`（`zgqxb-archive`）、D1 `PB_DB`（`paiban`）、静态资源 `ASSETS`。
 - 线上域名：`cfzx.xiyuan.wiki`。
 - 修改 `wrangler.jsonc` 绑定后必须执行 `npx wrangler types`。
 - 认证例外：`/health`、`/api/pb/health`、`/api/auth/register`、`/api/auth/login`；其余 `/api/*` 默认需要登录。
