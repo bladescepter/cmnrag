@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from fetch_epaper import apply_archive_titles, complete_title, extract_authors, main, process_article, title_field
+from fetch_epaper import apply_archive_titles, complete_title, extract_authors, main, print_review_table, process_article, title_field
 
 
 class AuthorOrderTests(unittest.TestCase):
@@ -156,6 +156,29 @@ class FullTitleTests(unittest.TestCase):
             self.assertNotIn("\nsubtitle:", daily)
 
 
+    def test_split_briefs_keep_the_complete_first_sentence(self):
+        first = "近日，天津市气象局与交通运输部北海航海保障中心达成合作共识。"
+        second = "内蒙古自治区气象局联合自治区农牧厅组建专项调研组，赴巴彦淖尔市开展向日葵产业气象服务专题调研。"
+        data = {"docTitle": "要闻简报", "content": f"本报讯{first}双方深化合作，完善业务交流机制，共同提升海上气象保障服务能力。（吴彤）\n本报讯{second}调研组走访当地产业基地，精准对接服务需求。（蒋芷晴）"}
+
+        def api(url, payload):
+            if url.endswith("findBmMenu.do"):
+                return [{"IRCATELOG": "01", "BM": "要闻", "JPPATH": ""}]
+            if url.endswith("getBmDetail.do"):
+                return [{"ZB_GUID": "brief-guid", "DOCTITLE": "要闻简报"}]
+            return data
+
+        with tempfile.TemporaryDirectory() as directory, \
+                patch("fetch_epaper.month_dir", return_value=directory), \
+                patch("fetch_epaper.curl_post", side_effect=api), \
+                patch("fetch_epaper.time.sleep"), patch("builtins.print"):
+            main("20260318")
+            files = sorted(Path(directory).rglob("*.md"))
+            self.assertEqual(len(files), 2)
+            for path, expected in zip(files, (first, second)):
+                self.assertIn(title_field(expected), path.read_text(encoding="utf-8"))
+
+
 class ArchiveTitleApplyTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -163,9 +186,12 @@ class ArchiveTitleApplyTests(unittest.TestCase):
         self.source = self.root / "202604/20260402/一版/01-主标题.md"
         self.source.parent.mkdir(parents=True)
         self.original = ('---\ntype: 报道\ntitle: 主标题\nsubtitle: ——副题\nauthor:\n  - 吴彤\n'
-                         'date: 2026-04-02\ncolumn:\n  - 时评\nregion: \n---\n\n正文原样。\n  缩进与空行。\n')
+                         'date: 2026-04-02\npage: 一版\ncolumn:\n  - 时评\nregion: \n---\n\n正文原样。\n  缩进与空行。\n')
         self.source.write_text(self.original, encoding="utf-8")
-        self.manifest = {"scope": "202604", "pages": {"20260402_01": {"reviewed": True}}, "articles": [{
+        self.image = self.root / "layout.jpg"
+        from PIL import Image
+        Image.new("RGB", (8, 8), "white").save(self.image)
+        self.manifest = {"scope": "202604", "pages": {"20260402_01": {"reviewed": True, "image": str(self.image)}}, "articles": [{
             "file": str(self.source.relative_to(self.root)),
             "source_sha256": hashlib.sha256(self.source.read_bytes()).hexdigest(),
             "old_title": "主标题", "old_subtitle": "——副题", "title": "引题 主标题 ——副题", "matched": True,
@@ -219,6 +245,88 @@ class ArchiveTitleApplyTests(unittest.TestCase):
         self.source.write_text(self.original + "审核后新增正文。", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "发生变更"):
             apply_archive_titles("202604")
+
+
+    def test_requires_actual_layout_evidence_even_when_marked_reviewed(self):
+        self.manifest["pages"]["20260402_01"]["image"] = ""
+        self.save_manifest()
+        with self.assertRaisesRegex(ValueError, "缺少实际版面"):
+            apply_archive_titles("202604", dry_run=True)
+        self.assertEqual(self.source.read_text(encoding="utf-8"), self.original)
+
+    def test_rejects_missing_layout_file(self):
+        self.manifest["pages"]["20260402_01"]["image"] = str(self.root / "missing.pdf")
+        self.save_manifest()
+        with self.assertRaisesRegex(ValueError, "缺少实际版面"):
+            apply_archive_titles("202604")
+
+    def test_layout_corrected_title_wins_over_api_candidate(self):
+        self.manifest["articles"][0]["api"] = {"docTitle": "观局 谋势 奋斗"}
+        self.manifest["articles"][0]["title"] = "观局 谋势 奋进 —解码新词热词"
+        self.save_manifest()
+        apply_archive_titles("202604")
+        destination = self.source.with_name("01-观局 谋势 奋进 —解码新词热词.md")
+        self.assertIn(title_field("观局 谋势 奋进 —解码新词热词"), destination.read_text(encoding="utf-8"))
+
+    def test_review_table_keeps_full_title_and_all_field_values(self):
+        title = "引题 " + "完整主标题" * 20 + " ——完整副题"
+        authors = ["作者甲", "作者乙", "作者丙", "作者丁", "作者戊"]
+        regions = ["青海省海西蒙古族藏族自治州格尔木市", "西藏自治区那曲市"]
+        columns = ["科普看台", "我们的纪念日"]
+        text = self.original.replace("  - 吴彤", "\n".join("  - " + name for name in authors))
+        text = text.replace("region: ", "region:\n" + "\n".join("  - " + value for value in regions))
+        text = text.replace("  - 时评", "\n".join("  - " + value for value in columns))
+        self.source.write_text(text, encoding="utf-8")
+        self.manifest["articles"][0].update(title=title, source_sha256=hashlib.sha256(self.source.read_bytes()).hexdigest())
+        self.save_manifest()
+        apply_archive_titles("202604")
+        with patch("builtins.print") as output:
+            print_review_table("202604")
+        table = output.call_args.args[0]
+        for value in [title, *authors, *regions, *columns]:
+            self.assertIn(value, table)
+        self.assertIn("共 1 篇", table)
+
+    def test_review_table_blocks_unreviewed_layouts(self):
+        self.manifest["pages"]["20260402_01"]["reviewed"] = False
+        self.save_manifest()
+        with self.assertRaisesRegex(ValueError, "尚未逐版核对"):
+            print_review_table("202604")
+
+    def test_review_table_blocks_title_changes_after_layout_review(self):
+        apply_archive_titles("202604")
+        destination = self.source.with_name("01-引题 主标题 ——副题.md")
+        destination.write_text(destination.read_text(encoding="utf-8").replace(title_field("引题 主标题 ——副题"), title_field("被截短的主标题")), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "标题与版面核定结果不一致"):
+            print_review_table("202604")
+
+    def test_review_table_blocks_omitted_articles(self):
+        apply_archive_titles("202604")
+        self.source.with_name("02-遗漏的稿件.md").write_text(self.original, encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "未完整覆盖"):
+            print_review_table("202604")
+
+
+class LayoutEvidenceTests(unittest.TestCase):
+    def test_original_layout_survives_temporary_image_cleanup(self):
+        from PIL import Image
+        from col_vision_run import prepare_page
+        from column_detect import cleanup_page_images
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original = root / "20260316_02.jpg"
+            Image.new("RGB", (40, 60), "blue").save(original)
+            original_bytes = original.read_bytes()
+            with patch("col_vision_run.OUT_DIR", directory), \
+                    patch("column_detect.OUT_DIR", directory), \
+                    patch("col_vision_run.get_page_data", return_value={"jppath": "layout.jpg", "articles": []}), \
+                    patch("col_vision_run.download_image", return_value=str(original)), \
+                    patch("builtins.print"):
+                prepare_page("20260316", "02")
+                cleanup_page_images("20260316", "02")
+            self.assertFalse(original.exists())
+            self.assertEqual((root / "title_evidence/20260316_02.jpg").read_bytes(), original_bytes)
 
 
 if __name__ == "__main__":

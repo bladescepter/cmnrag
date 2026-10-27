@@ -63,8 +63,20 @@ tags: [epaper, 中国气象报, newspaper, rag-pipeline]
    d. 重跑 `python scripts/column_detect.py YYYYMMDD` 生成 `_result.json` 并匹配每篇；脚本先检查已有 frontmatter，默认只把非空识别结果写入空的 `column`，且强制序列化为 YAML 块式 list
       （一篇稿件可命中多个真实栏条，如整版刊头「科普看台」+ 局部「微话题」；脚本按 vision.json 顺序写入多个栏目。双栏目情况极少，但版面上两个栏条都可见时都要记，不得只取其一）
    e. 不再手工改写 `column`；脚本写入后再次执行 frontmatter list 闸门。需要单独检查时运行 `python scripts/column_detect.py YYYYMMDD --check`，任一闸门失败即停止交付
-4. 所有字段已填写完成后，一次性交人工审核   附作者/地区/栏目完整汇总表（逐篇），用户复核；该步骤是交付后的抽检/修正，不得作为前面识别质量不达标的理由
-5. 审核通过后更新库   KNOWN_AUTHORS 差集入库（逐人列新增）；
+4. 逐版标题校正（强制，当前 LLM 直接读实际版面）
+   python scripts/fetch_epaper.py --prepare-archive-titles YYYYMMDD
+   生成 column_test/YYYYMMDD_archive_titles.json；API 标题仅为候选。
+   当前 LLM 逐版逐篇直接读原版图/PDF，按实情核定稿件边界及完整引题→主标题→副题；
+   修正每篇 title、稿件对应关系 matched，填写每版 image 证据路径；读图校正完成后才标记 reviewed=true。
+   版面图由 col_vision_run.py 保留到 column_test/title_evidence/，不随栏目临时图清理。
+   python scripts/fetch_epaper.py --check-archive-titles YYYYMMDD
+   python scripts/fetch_epaper.py --apply-archive-titles YYYYMMDD
+5. 所有字段已填写完成后，一次性交人工审核
+   python scripts/fetch_epaper.py --review-table YYYYMMDD
+   将输出按日期、版序逐篇原样贴入聊天，完整展示 title、全部 author、全部 region、全部 column；
+   不得省略引题/副题、截字、改写、简称、省略号、“等”“同上”或以文件链接代替字段值；多日多篇分段完整列出。
+   用户复核是交付后的抽检/修正，不得作为前面标题或栏目识别质量不达标的理由。
+6. 审核通过后更新库   KNOWN_AUTHORS 差集入库（逐人列新增）；
                      KNOWN_COLS 补新栏目名（如"云海"），均在审核确认后执行
 
 **审核后数据边界（用户明确要求）：**
@@ -74,9 +86,9 @@ tags: [epaper, 中国气象报, newspaper, rag-pipeline]
 ```
 
 **流程纪律（用户明确要求，已定多年）：**
-- **拉取 + 地区 + 栏目识别全部填好后才交审核，中间绝不请示**
+- **拉取 + 地区 + 栏目识别 + 逐版标题校正全部完成后才交审核，中间绝不请示**
 - 中途**无需汇报**：fetch、enrich、栏目识别全程不打扰用户，不列易错点、不逐篇播报、不问"确认后写入吗"
-- **所有数据抓好后一次性交人工审核**，附作者/地区/栏目汇总表供复查
+- **所有数据抓好并逐版核定完整标题后一次性交人工审核**，直接在聊天中完整列出逐篇标题、作者、地区、栏目；不得进行任何缩略，也不创建审核 Markdown 文件或用文件链接替代聊天内审核表
 - 失败不静默：enrich 超时/失败必须告知并重跑，绝不跳过不说
 - **写入稿件 frontmatter（author/region/column 字段及拆分修正）是正常流程**，识别完直接写，无需审核；栏目写入必须经 `column_detect.py` 的块式 list 序列化与闸门校验，禁止手工写成标量；人工审核发生在完整填写之后，是交付后的抽检/修正步骤，不是模型完成质量的前置条件或替代品
 - 识别到不在 KNOWN_COLS 的新栏目名：只有在版面图中确实看见栏目条时，记录其图中文字供审核；不得把库外文字用相似度、子串或主题推断强行映射为已知栏目，确认后再加入 KNOWN_COLS
@@ -107,6 +119,16 @@ tags: [epaper, 中国气象报, newspaper, rag-pipeline]
 - 仅当用户明确指示“这是误改，请修复”时才动手修改
 - 对比/测试的金标准一律用【审核后的稿件 frontmatter 现状】，不用“助手写入时的快照”
 
+## 标题校正与完整审核（强制）
+
+- **标题依据本期实际版面，不盲信接口。** `DOCTITLE`、`detailData.docTitle`、`yt`、`fb` 都只是候选输入；当前 LLM 必须逐版直接读版面图或原版 PDF，逐篇核对字词、引题/主标题/副题及其顺序、标点和稿件边界。接口与版面不一致时按版面修正，即使接口字段齐全也不能跳过读图。
+- 版面图/PDF必须实际取得并可读；空白图、文字不清或仅有 OCR/自动图注时不得标记完成。换用电子报同版的其他清晰图片或原版 PDF，核清后再继续；OCR/PDF文本只作定位辅助。
+- 需要合并的稿件按版面结构处理，先备份再合并，原有小标题保留为正文小节；完成稿件边界调整及作者/地区/栏目填写后，再生成最终标题核对清单，避免清单文件集合或哈希过期。
+- `--prepare-archive-titles` 只生成候选，不代表标题正确。当前 LLM 逐版校正 `articles[].title`、确认稿件对应关系后，填写 `pages[版面].image` 为实际读过的版面图/PDF路径，最后才设置 `reviewed=true`；不得批量把未读版面直接标记完成。图片新闻仍按既有图注概括规则核对，禁止以短标题规则缩写普通报道。
+- 没有独立条目标题的简报，完整首句仅作候选，仍须结合实际版面核定；禁止按固定字数截取标题，禁止把句子截断的残片交审核。
+- `--check-archive-titles` 校验版面证据、稿件覆盖和文件哈希；通过后用 `--apply-archive-titles` 同步完整 `title` 与文件名。自动校验只能检查流程记录，不能替代当前 LLM 的视觉判读。
+- `--review-table` 在版面核对完成、标题回写及稿件覆盖检查通过后，从本地 Markdown 生成审核表；当前 LLM 将全部输出直接贴入聊天。标题保留完整引题、主标题、副题；作者逐人列全；地区逐项列完整行政路径；栏目逐项列全称。不得以“只展示主标题”、字符截断、简称、省略号、“等”“同上”、合并行或文件链接缩略审核内容。篇数多时按日期、版序分段完整展示；空字段明确标“—”，并说明其表示留空。
+
 ## API 端点（无需浏览器）
 
 所有接口 POST，`content-type: application/x-www-form-urlencoded; charset=utf-8`。每次 POST 间 sleep 0.2-0.3s 防限流。
@@ -124,7 +146,7 @@ tags: [epaper, 中国气象报, newspaper, rag-pipeline]
 
 - `getBmDetail` 每条：`DOCTITLE`（标题）、`DOCAUTHOR`（作者）、`ZB_GUID`（文章ID）、`BM`（版面名）、`ZB`（坐标）
 - `detailData`：`docTitle`、`docAuthor`、`yt`（引题）、`fb`（副题）、`txs`（字数）、`content`（正文HTML）、`ctpath`（配图）、`ts`（图片说明）
-- **主标题以 `detailData.docTitle` 为准**（`DOCTITLE` 可能不一致）；按 `yt`（引题）→ `docTitle`（主标题）→ `fb`（副题）的原文顺序合为完整 `title`，片段间用空格，保留标点和破折号，不另写 `subtitle` 字段；已包含的片段不重复追加。图片新闻仍走现有短标题流程。写入 frontmatter 和文件名之前统一清理 HTML 实体，字面字符串 `&nbsp;` 必须去掉/转为普通空格，禁止进入标题。
+- **最终标题以实际版面为准**；`detailData.docTitle`、`yt`、`fb` 与列表 `DOCTITLE` 都只作候选，不能互相印证为正确。当前 LLM 直接读版面核定后，按实际“引题→主标题→副题”顺序合为完整 `title`，片段间用空格，保留原有字词、标点和破折号，不另写 `subtitle`；已包含的片段不重复追加。图片新闻仍走现有短标题流程。写入 frontmatter 和文件名之前统一清理 HTML 实体，字面字符串 `&nbsp;` 必须去掉/转为普通空格，禁止进入标题。
 - `column` 是纯视觉元素（版面标签条），**API 不提供**（`CS` 字段大多为空）；版面名（要闻/综合/党建…）不是栏目名，引题不是栏目名
 - `region` 由当前 LLM 按全文报道主体判定，字段语义以 `cmnrag/FRONTMATTER.md` 为准。先确定主体，再判断填写一项、多项还是留空；跨省本身不构成留空条件。
   - 聚焦一个地方事项、机构或项目：填写主体所在地的完整行政路径（省级开头，精确到正文明确的层级）。机构跨地共建，不自动把所有共建地区列为主体。
@@ -156,9 +178,9 @@ c = c.strip()
 
 | 路径 | 用途 |
 |------|------|
-| `scripts/fetch_epaper.py` | 抓取+清洗（含 KNOWN_AUTHORS、split_authors、重试） |
+| `scripts/fetch_epaper.py` | 抓取+清洗（含 KNOWN_AUTHORS、split_authors、重试）；`--prepare/check/apply-archive-titles` 生成候选、校验版面证据并回写完整标题；`--review-table` 输出无缩略完整审核表 |
 | `scripts/enrich_regions.py` | region 清单输出 + 确定性写入（判读由当前 LLM：`YYYYMMDD` 出清单，`--apply` 回写并过闸门），数据根默认仓库内 `cmnrag/`，可用 `CMNRAG_DATA_DIR` 覆盖 |
-| `scripts/col_vision_run.py` | 栏目识别准备器：调 **无模型**，只取版面图并产出 `YYYYMMDD_BC_full.jpg` / `band0..3`（横向条带）/ `col0..2`（纵向列条）供当前 LLM 读图；`--validate` 用 column_detect 同一套证据规则校验 vision.json |
+| `scripts/col_vision_run.py` | 栏目识别准备器：调 **无模型**，只取版面图并产出 `YYYYMMDD_BC_full.jpg` / `band0..3`（横向条带）/ `col0..2`（纵向列条）供当前 LLM 读图；原版图保留至 `title_evidence/` 供标题核定，`--validate` 用 column_detect 同一套证据规则校验 vision.json |
 | `scripts/column_detect.py` | 下载版面图 + vision.json 匹配到每篇，生成 `_result.json`；默认安全写入空 `column`，并校验 `author/column/region` 的 YAML 块式 list；栏目库 `KNOWN_COLS` 在此维护 |
 
 ## 视觉识别（栏目识别）

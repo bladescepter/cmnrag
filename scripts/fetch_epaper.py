@@ -24,6 +24,11 @@
      python scripts/col_vision_run.py YYYYMMDD                 # 产出裁剪图清单
      （当前 LLM 读原图识别栏目，写 column_test/YYYYMMDD_BC_vision.json）
      python scripts/column_detect.py YYYYMMDD                  # 匹配并写入 column
+  4. python scripts/fetch_epaper.py --prepare-archive-titles YYYYMMDD
+     （当前 LLM 逐版直接读实际版面，修正清单中的完整标题，填写版面证据并标记 reviewed）
+     python scripts/fetch_epaper.py --check-archive-titles YYYYMMDD
+     python scripts/fetch_epaper.py --apply-archive-titles YYYYMMDD
+  5. python scripts/fetch_epaper.py --review-table YYYYMMDD      # 完整审核表直接贴入聊天，不缩略任何字段
 
 图片新闻标题规范 (2026-08 用户确认):
   - 所有图片新闻统一使用标题「图片新闻：XXXX」，XXXX 为内容概括短语（如"图片新闻：漳浦龙舟赛气象保障"）。
@@ -77,6 +82,11 @@ SURNAMES = set(
 
 # 已知作者姓名库（经用户确认的准确分词），新作者名确认后加入
 KNOWN_AUTHORS = {
+    '严赋憬', '刘符军', '刘莉红', '叶永福', '孙景荣', '宋建武', '张晓松', '张桂伟',
+    '张泽慧', '曲和风', '朱基钗', '李萍', '李郅玙', '杨艳超', '林琦瀚', '温建伟',
+    '王理', '王金磊', '田晓燕', '石建丰', '胡梦雪', '许万智', '许晨', '赵国蓉',
+    '赵山', '赵未峰', '赵立云', '辛博', '郑琪', '闵颖', '陈梦醒', '韩乾',
+    '马文倩', '马海英', '高苏文', '黄国靓', '黄露',
     '付烨', '党爱荣', '刘志超', '孙冰', '延昊', '徐竟涵', '桑林', '殷青',
     '王镱霖', '田凤云', '秦奔奔', '罗焕娟', '闫晓庆', '阮金帅', '陈紫璇',
     '乔前东', '乔友刚', '冯明农', '刘亚东', '刘元珺', '刘琪瑞', '博德弥亚·阿福', '卢小玛',
@@ -969,7 +979,7 @@ KNOWN_AUTHORS = {
     "唐艺菡", "宋美琪", "张岚", "张德有", "张新兴", "张璐", "张隆歌", "张颖",
     "徐亚琪", "文大伟", "施萁", "朱娈", "李世婷", "李博", "杨晓彤", "樊文雁",
     "段海霞", "沈桑", "沈绿草", "王吉贤", "王如沾", "王洁", "王鼎宇", "程思",
-    "胡竞", "艾热提江·艾尼", "董文宇", "蔡娜佳", "蔡淼", "薛文华", "许文进", "贾静淅",
+    "艾热提江·艾尼", "董文宇", "蔡娜佳", "蔡淼", "薛文华", "许文进", "贾静淅",
     "赵淑", "郑婧", "阳揣环", "陆伟", "陈斯婕", "陈诚", "雷雨虹", "韩婷婷",
     "颜佳任", "马顾夏", "高明", "高梅", "鲍美香", "麦合木提·买买提", "麻雪艳",
 
@@ -979,6 +989,16 @@ KNOWN_AUTHORS = {
 
     # 20261026 新增（审核确认）
     "单爱美", "李月", "李琳琳", "王子玄妙", "王韫喆", "范泽", "许雪松", "贺小苗",
+
+    # 20260302—20260306 新增（审核确认）
+    "任炜", "何巍", "余缘友", "冯久洋", "刘胜", "吴晓红", "周晓虎", "唐筱雨",
+    "孔尧", "宋利生", "弘美", "张学康", "张宇航", "张斌斌", "张煦庭", "张英波",
+    "张骏", "徐柳韵", "徐立强", "戴晴", "方飞", "施展", "施芳", "曹建龙",
+    "曹雪蕾", "朱倩男", "朱学文", "李嘉睿", "李育乔", "李若琳", "杨舒琳", "杨锋",
+    "熊坤", "王明生", "王晓默", "王晨", "王福州", "田洁", "白陈祥", "肖杨",
+    "肖雯", "薛睿", "袁媛", "裴育", "谢帅", "赵峰", "赵爽", "赵立君",
+    "邓荣河", "邱岑澍", "钟华论", "陆琴琴", "陈军", "陈金龙", "香求", "马丽",
+    "马丽征", "黄文鼎", "黄时暄",
 }
 
 # 姓氏先验：库内已知名首字频率（大姓如王李张刘陈频率高 → 更可信）
@@ -1533,7 +1553,7 @@ def html_clean(s):
     return re.sub(r"<[^>]+>", "", s).strip()
 
 def complete_title(title, kicker="", subtitle=""):
-    """按引题、主标题、副题顺序保留完整标题；清理实体，不改写原文。"""
+    """拼接接口候选标题；最终须由当前 LLM 对照实际版面逐字校正。"""
     def clean(value):
         text = html_clean(str(value or ""))
         return "" if text.lower() in ("null", "none") else " ".join(text.split())
@@ -1901,8 +1921,9 @@ def main(date_str):
                     if kept_items:
                         # 为每个条目生成单独文件
                         for ki, item in enumerate(kept_items):
-                            # 从正文提取标题（取前20字）
-                            item_title = re.sub(r'^本报讯\s*', '', item)[:25]
+                            # 无独立标题的简报以完整首句作候选，最终仍须对照版面核定。
+                            item_title = re.sub(r'^本报讯\s*', '', item)
+                            item_title = re.split(r'(?<=[。！？!?])', item_title, maxsplit=1)[0]
                             item_title = re.sub(r'[（(][^）)]*[）)]\s*$', '', item_title).strip()
                             if not item_title:
                                 item_title = f"要闻简报{ki+1}"
@@ -1995,7 +2016,7 @@ def main(date_str):
                 f.write(md)
             total += 1
             hl = "★" if is_headline else " "
-            print(f"  {page} {order:02d}{hl} {final_title[:35]}  reg={region}")
+            print(f"  {page} {order:02d}{hl} {final_title}  reg={region}")
 
         # 版面概览 (已移除，如有需要由人工补充)
         pass
@@ -2006,7 +2027,7 @@ def main(date_str):
     if total != expected:
         print(f"  ⚠ 应有 {expected} 篇，实际写入 {total} 篇（缺失 {expected - total} 篇）")
     write_pic_title_pending(date_str)
-    print("后续: 当前 LLM 概括图片新闻标题 → enrich_regions（地区）→ col_vision_run（栏目）")
+    print("后续: 图片新闻标题 → 地区 → 栏目 → 逐版对照实际版面校正完整标题 → --review-table 完整审核表")
 
 
 def prepare_archive_titles(scope):
@@ -2088,12 +2109,38 @@ def prepare_archive_titles(scope):
                     "guid": str(row["guid"]) if row else "", "kind": kind,
                     "api": fields, "title": title, "matched": bool(row),
                 })
-            manifest["pages"][key] = {"reviewed": False, "image": ""}
+            evidence = work / "title_evidence" / f"{key}.jpg"
+            manifest["pages"][key] = {"reviewed": False, "image": str(evidence.resolve()) if evidence.is_file() else ""}
             manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
             print(f"标题候选 {key}: 累计 {len(manifest['articles'])} 篇", flush=True)
     unresolved = [row["file"] for row in manifest["articles"] if not row["matched"]]
     print(json.dumps({"manifest": str(manifest_path), "articles": len(manifest["articles"]),
                       "pages": len(manifest["pages"]), "unmatched": unresolved}, ensure_ascii=False), flush=True)
+
+
+def _require_layout_review(manifest):
+    """检查逐版核对声明及实际版面证据；视觉核定由当前 LLM 执行。"""
+    from pathlib import Path
+
+    codes = {"一版": "01", "二版": "02", "三版": "03", "四版": "04"}
+    expected = set()
+    for item in manifest["articles"]:
+        parts = Path(item["file"]).parts
+        expected.add(f"{parts[-3]}_{codes[parts[-2]]}")
+    pages = manifest.get("pages") or {}
+    if not expected or set(pages) != expected:
+        raise ValueError("版面核对清单未完整覆盖稿件")
+    pending = [key for key, page in pages.items() if page.get("reviewed") is not True]
+    if pending:
+        raise ValueError("尚未逐版核对：" + ",".join(pending))
+    for key, page in pages.items():
+        image = str(page.get("image") or "").strip()
+        path = Path(image)
+        if not path.is_absolute():
+            path = Path(PROJECT_ROOT) / path
+        if (not image or path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".pdf"}
+                or not path.is_file() or path.stat().st_size == 0):
+            raise ValueError(f"缺少实际版面图/PDF证据：{key}")
 
 
 def apply_archive_titles(scope, dry_run=False):
@@ -2114,9 +2161,7 @@ def apply_archive_titles(scope, dry_run=False):
         raise ValueError("标题清单未完整覆盖指定范围或存在重复稿件")
     if manifest.get("scope") != scope:
         raise ValueError("标题清单范围不匹配")
-    pending = [key for key, page in manifest["pages"].items() if not page.get("reviewed")]
-    if pending:
-        raise ValueError("尚未逐版核对：" + ",".join(pending))
+    _require_layout_review(manifest)
     plans = []
     targets = set()
     for item in manifest["articles"]:
@@ -2180,16 +2225,70 @@ def apply_archive_titles(scope, dry_run=False):
                       "report": str(report_path)}, ensure_ascii=False))
 
 
+def print_review_table(scope):
+    """仅在版面标题核定并回写完成后，输出本地稿件全量、无缩略审核表。"""
+    from pathlib import Path
+    from html import escape
+    import yaml
+    from column_detect import _validate_frontmatter_file
+
+    if not re.fullmatch(r"\d{6}(?:\d{2})?", scope):
+        raise ValueError("审核范围必须为 YYYYMM 或 YYYYMMDD")
+    root = Path(OUT_BASE)
+    manifest_path = root / "column_test" / f"{scope}_archive_titles.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("scope") != scope:
+        raise ValueError("标题清单范围不匹配")
+    _require_layout_review(manifest)
+    base = root / scope[:6] / scope if len(scope) == 8 else root / scope
+    expected, rows = set(), []
+    codes = {"一版": 1, "二版": 2, "三版": 3, "四版": 4}
+    for item in manifest["articles"]:
+        if not item.get("matched"):
+            raise ValueError(f"尚未确认稿件对应关系: {item['file']}")
+        source = root / item["file"]
+        prefix = re.match(r"\d+(?:-\d+)?-", source.name).group()
+        path = source.with_name(prefix + sanitize_filename(item["title"]) + ".md")
+        if path in expected or not path.is_file():
+            raise ValueError(f"标题尚未回写或稿件路径重复: {path}")
+        expected.add(path)
+        errors = _validate_frontmatter_file(str(path))
+        if errors:
+            raise ValueError("\n".join(errors))
+        text = path.read_text(encoding="utf-8")
+        match = re.match(r"^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)", text)
+        fm = yaml.safe_load(match[1])
+        if fm.get("title") != item["title"] or "subtitle" in fm:
+            raise ValueError(f"标题与版面核定结果不一致: {path}")
+        values = [str(fm.get("date") or ""), fm["page"] + prefix[:-1], fm["title"]]
+        for field in ("author", "region", "column"):
+            values.append("、".join(fm.get(field) or []) or "—")
+        row = "| " + " | ".join(escape(v, quote=False).replace("|", "\\|").replace("\n", "<br>") for v in values) + " |"
+        rows.append(((values[0], codes[fm["page"]], tuple(map(int, prefix[:-1].split("-")))), row))
+    if expected != set(base.rglob("*.md")):
+        raise ValueError("审核表未完整覆盖指定范围的本地稿件")
+    output = [f"共 {len(rows)} 篇；— 表示字段留空。", "",
+              "| 日期 | 版序 | 完整标题 | 作者 | 地区 | 栏目 |", "|---|---|---|---|---|---|"]
+    output.extend(row for _, row in sorted(rows))
+    print("\n".join(output))
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("用法: python3 fetch_epaper.py YYYYMMDD")
         print("      python3 fetch_epaper.py --guid=XXXXX YYYYMMDD        # 单篇重抓")
         print("      python3 fetch_epaper.py --apply-titles YYYYMMDD     # 回写当前 LLM 概括的图片新闻标题")
+        print("      python3 fetch_epaper.py --prepare-archive-titles YYYYMMDD  # 生成待逐版核定的标题候选")
+        print("      python3 fetch_epaper.py --check-archive-titles YYYYMMDD    # 校验版面证据和完整标题")
+        print("      python3 fetch_epaper.py --apply-archive-titles YYYYMMDD    # 回写核定标题和文件名")
+        print("      python3 fetch_epaper.py --review-table YYYYMMDD            # 输出完整审核表，直接贴入聊天")
         sys.exit(1)
     if sys.argv[1] == "--prepare-archive-titles":
         prepare_archive_titles(sys.argv[2])
     elif sys.argv[1] in ("--apply-archive-titles", "--check-archive-titles"):
         apply_archive_titles(sys.argv[2], dry_run=sys.argv[1] == "--check-archive-titles")
+    elif sys.argv[1] == "--review-table":
+        print_review_table(sys.argv[2])
     elif sys.argv[1].startswith("--guid="):
         guid = sys.argv[1].split("=", 1)[1]
         date_str = sys.argv[2]

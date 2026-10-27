@@ -24,6 +24,8 @@
 
 ## 3. 数据纪律
 
+- `title` 必须由当前 LLM 逐版对照实际版面图或原版 PDF，按版面实情校正完整引题、主标题、副题；接口标题仅作候选，与版面不一致时以版面为准，不得把接口拼接成功当作核对完成。
+- 审核汇报按日期、版序逐篇直接列在聊天中，完整展示本地 Markdown 的 `title`、全部 `author`、全部 `region`、全部 `column`；不得省略引题/副题、截字、改写、使用简称、省略号、“等”“同上”或链接代替字段值，篇数多时分段完整列出。
 - `column` 是报纸编排栏目，只能依据本期版面图中实际可见的栏目条；`KNOWN_COLS` 只是命名白名单，不能证明栏目在本期存在。
 - `region` 按报道主体判定：聚焦一个地区时填写省级开头的完整行政路径；明确聚焦多个合作、联防联控地区时逐项填写 YAML 块式 list，即使跨省也必须填写。全国性、跨区域综述、中国气象局本级事项或主体地区不明确时留空；举例、背景、信息来源中的地名不自动列入。字段语义以 `cmnrag/FRONTMATTER.md` 为准。
 - 空字段保留为空字符串，不猜测、不补写、不把空值当作“全国”。
@@ -50,10 +52,17 @@ python scripts/column_detect.py YYYYMMDD
 python scripts/col_vision_run.py YYYYMMDD
 # 当前 LLM 写 vision JSON 后：
 python scripts/col_vision_run.py --validate YYYYMMDD
+python scripts/column_detect.py YYYYMMDD
 python scripts/column_detect.py YYYYMMDD --check
+# 逐版标题核对（版面原图已由 col_vision_run 保存在 column_test/title_evidence/）：
+python scripts/fetch_epaper.py --prepare-archive-titles YYYYMMDD
+# 当前 LLM 直接读每版实际版面，修正清单内完整 title、稿件对应关系和版面证据，完成后才标记 reviewed：
+python scripts/fetch_epaper.py --check-archive-titles YYYYMMDD
+python scripts/fetch_epaper.py --apply-archive-titles YYYYMMDD
+python scripts/fetch_epaper.py --review-table YYYYMMDD
 ```
 
-抓取、地区、栏目识别全部完成后一次性提交作者/地区/栏目汇总表审核，中途不请示、不播报。
+稿件边界按实际版面确定；需要合并时先备份、合并正文，再生成标题核对清单。标题、作者、地区、栏目全部完成且校验通过后，将 `--review-table` 输出逐篇原样贴入聊天，一次性提交人工审核；不得缩略任何字段，不得以文件链接替代审核表。
 
 ### 4.2 “入库”的固定含义
 

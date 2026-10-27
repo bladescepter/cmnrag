@@ -15,15 +15,16 @@
   YYYYMMDD_BC_band0..3.jpg  横向条带放大（顶部通栏 / 中部上 / 中部下 / 版底，全宽不切列）
   YYYYMMDD_BC_col0..2.jpg   纵向列条放大（左列 / 中列 / 右列，带重叠；看窄栏与竖排通栏）
   YYYYMMDD_BC_vision.json   当前 LLM 识别结果（本脚本 --validate 校验）
+  title_evidence/YYYYMMDD_BC.jpg  实际版面原图副本，供交付前逐版核定完整标题
 
 vision.json 格式（栏标是唯一证据，栏目名必须逐字命中 KNOWN_COLS）:
   [{"column": "库内标准栏目名", "bar_visible": true, "bar_text": "图中栏目条原文",
     "articles": ["标题原文1", "标题原文2"]}]
 
-识别完成后运行 python scripts/column_detect.py YYYYMMDD 匹配并写入 column；流程通过最终校验后会自动删除上述临时图片，仅保留 JSON 结果。
+识别完成后运行 python scripts/column_detect.py YYYYMMDD 匹配并写入 column；流程通过最终校验后会自动删除上述临时图片，保留 JSON 结果和 title_evidence/ 版面证据。
 历史栏目"存在过"不能证明本期存在；条带扫描没看到也不等于不存在。
 """
-import os, json, sys
+import os, json, sys, shutil
 
 from PIL import Image
 
@@ -69,6 +70,9 @@ def prepare_page(date_str, bc):
     if not img_path:
         print(f"[!] {page} 无法下载版面图")
         return None
+    evidence_dir = os.path.join(OUT_DIR, "title_evidence")
+    os.makedirs(evidence_dir, exist_ok=True)
+    shutil.copyfile(img_path, os.path.join(evidence_dir, f"{date_str}_{bc}.jpg"))
     titles = [a["DOCTITLE"] for a in data["articles"] if a.get("DOCTITLE")]
     images = [("整版缩放", _save_scaled(Image.open(img_path), os.path.join(OUT_DIR, f"{date_str}_{bc}_full.jpg"), 1600))]
     for i, (y0, y1, label) in enumerate(BANDS):
@@ -97,7 +101,7 @@ def prepare(date_str, bcs):
         print(f"\n{'=' * 70}")
         print(f"{date_str} {page}（{len(titles)} 篇文章）")
         print(f"{'=' * 70}")
-        print("本版文章标题清单（归属映射用；标题不是栏目证据）：")
+        print("本版接口候选标题清单（归属映射用；最终标题必须按实际版面核定，标题不是栏目证据）：")
         for i, t in enumerate(titles, 1):
             print(f"  {i:02d}. {t}")
         print("\n识别用图片（当前 LLM 直接读图，逐张都看）：")
@@ -113,6 +117,7 @@ def prepare(date_str, bcs):
         print(f"  本版没有明确栏目条就写 []。")
     print(f"\n写完后自检：python scripts/col_vision_run.py --validate {date_str} " + " ".join(bcs))
     print(f"再匹配写入：python scripts/column_detect.py {date_str}")
+    print(f"标题证据已保留在 {os.path.join(OUT_DIR, 'title_evidence')}；随后运行 --prepare-archive-titles，逐版直接读图校正完整标题后再交审核。")
 
 
 def validate(date_str, bcs):
