@@ -658,3 +658,34 @@ h1, h2, h3 { overflow-wrap: anywhere; min-width: 0; font-family: var(--font-disp
   .column-dashboard-page .column-bars li { grid-template-columns: minmax(7rem, 1.2fr) minmax(4rem, 2fr) 2rem; gap: var(--space-xs); font-size: var(--text-xs); }
   .column-dashboard-page .column-panel-head { align-items: flex-start; flex-direction: column; gap: var(--space-xs); }
 }
+
+
+/* Navigation disclosure · shared by static pages and the scheduling workbench.
+ * Hallmark · component: navigation · genre: editorial · theme: existing Broadsheet
+ * pre-emit critique: P4 H4 E4 S5 R5 V3
+ */
+#auth-bar .auth-nav { min-width: 0; overflow: visible; }
+#auth-bar .nav-menu { display: flex; flex: none; align-items: center; }
+#auth-bar .nav-menu > .auth-link { padding-inline-end: var(--space-2xs); }
+#auth-bar .nav-disclosure { position: static; }
+#auth-bar .nav-toggle { justify-content: center; min-width: 2.75rem; min-height: 2.75rem; padding: var(--space-xs); cursor: pointer; list-style: none; }
+#auth-bar .nav-toggle::-webkit-details-marker { display: none; }
+#auth-bar .nav-toggle::marker { content: ''; }
+#auth-bar .nav-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+#auth-bar .nav-toggle:active { color: var(--color-accent); background: var(--color-accent-soft); }
+#auth-bar .nav-menu .nav-disclosure .nav-caret { transform: none; }
+#auth-bar .nav-menu .nav-disclosure[open] .nav-caret { transform: rotate(180deg); }
+#auth-bar .nav-menu .nav-disclosure .nav-dropdown { top: 100%; max-height: min(24rem, 60dvh); overflow-y: auto; overscroll-behavior: contain; opacity: 1; pointer-events: auto; visibility: visible; transform: translateX(-50%); transition: none; }
+#auth-bar .nav-disclosure:not([open]) .nav-dropdown { display: none; }
+#auth-bar .nav-dropdown-item strong { white-space: nowrap; }
+#auth-bar .auth-name { min-width: 0; }
+
+@media (max-width: 60rem) {
+  #auth-bar .auth-bar-inner { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2xs) var(--space-xs); width: calc(100% - 2 * var(--space-md)); }
+  #auth-bar .auth-nav { order: 3; width: 100%; justify-content: flex-start; gap: var(--space-2xs); }
+  #auth-bar .auth-nav > .auth-link, #auth-bar .nav-menu > .auth-link { min-height: 2.75rem; padding-inline: var(--space-xs); }
+  #auth-bar .nav-menu > .auth-link { padding-inline-end: 0; }
+  #auth-bar .auth-right { max-width: calc(100% - 5rem); gap: var(--space-2xs); }
+  #auth-bar .auth-right .auth-link { flex: none; }
+  #auth-bar .nav-menu .nav-disclosure .nav-dropdown { left: 0; transform: none; }
+}

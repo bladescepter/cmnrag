@@ -34,8 +34,18 @@ export default function App() {
         <div className="auth-bar-inner">
           <div className="auth-left"><a className="auth-home" href="/">‹ 返回主页</a></div>
           <nav className="auth-nav" aria-label="模块导航">
-            <a className="auth-link" href="/db">报纸资料库</a>
-            <a className="auth-link active" href="/schedule">排班系统</a>
+            <div className="nav-menu">
+              <a className="auth-link" href="/db/">报纸资料库</a>
+              <details className="nav-disclosure">
+                <summary className="auth-link nav-toggle" aria-label="资料库看板菜单"><span className="nav-caret" aria-hidden="true">⌄</span></summary>
+                <div className="nav-dropdown">
+                  <a className="nav-dropdown-item" href="/db/stats/"><span><strong>各省发稿看板</strong><small>按地区查看发稿量</small></span><span className="nav-arrow" aria-hidden="true">↗</span></a>
+                  <a className="nav-dropdown-item" href="/column-dashboard/"><span><strong>栏目运行看板</strong><small>栏目状态与趋势</small></span><span className="nav-arrow" aria-hidden="true">↗</span></a>
+                </div>
+              </details>
+            </div>
+            <a className="auth-link active" href="/schedule/" aria-current="page">排班系统</a>
+            <a className="auth-link" href="/proofreading/">校对工具</a>
           </nav>
           <div className="auth-right">
             <span className="auth-name">{user?.username ?? ''}</span>

@@ -120,7 +120,7 @@ table.schedule td.cell-locked { background: var(--color-accent-soft); box-shadow
 }
 @media (max-width: 40rem) {
   #auth-bar .auth-bar-inner { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2xs) var(--space-xs); }
-  #auth-bar .auth-nav { order: 3; width: 100%; justify-content: flex-start; overflow-x: auto; }
+  #auth-bar .auth-nav { order: 3; width: 100%; justify-content: flex-start; overflow: visible; }
   .table-heading { align-items: start; flex-direction: column; gap: var(--space-xs); }
   .filter-range { align-items: stretch; flex-direction: column; }
   .filter-range span { text-align: center; }

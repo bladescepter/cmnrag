@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-labelledby="title">
+  <title id="title">采访中心工具集 · 折角报纸</title>
+  <!-- Hallmark · component: favicon · genre: editorial · theme: Broadsheet
+       pre-emit critique: P5 H5 E5 S4 R5 V4 -->
+  <style>
+    :root {
+      --color-ink: #1d2d2e;
+      --color-paper: #fbfaf5;
+      --color-accent: #1f6572;
+    }
+    .ink { fill: var(--color-ink); }
+    .paper { fill: var(--color-paper); }
+    .fold { fill: var(--color-accent); }
+  </style>
+  <rect class="ink" width="32" height="32" rx="6"/>
+  <path class="paper" d="M8 4h12l6 6v18H8z"/>
+  <path class="fold" d="M20 4v6h6z"/>
+  <path class="ink" d="M10 12h12v2H10zm0 6h4v6h-4zm6 0h6v2h-6zm0 4h6v2h-6z"/>
+</svg>
