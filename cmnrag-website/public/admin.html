@@ -137,7 +137,7 @@
     const tabs = renderTabs(status);
     main.appendChild(tabs);
     const me = await api("/api/auth/me");
-    if (me.status !== 200) { location.href = "/login.html?next=" + encodeURIComponent("/admin.html"); return; }
+    if (me.status !== 200) { location.href = "/login?next=" + encodeURIComponent("/admin"); return; }
     if (me.data.user.role !== "admin") {
       main.appendChild(div("deny", "无权访问：仅管理员可审批"));
       const back = document.createElement("a");

@@ -402,7 +402,7 @@ setInterval(() => {
       message('请先登录后使用校对工作台。');
       $("service-status").textContent = "需要登录";
       const link = node("a", "login-link", "前往登录 →");
-      link.href = `/login.html?next=${encodeURIComponent(location.pathname + location.search)}`;
+      link.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
       $("page-message").append(link);
       return;
     }
